@@ -1,0 +1,17 @@
+venv/
+
+
+# Ignorar archivos compilados de Python
+__pycache__/
+*.pyc
+
+
+# Ignorar entornos virtuales y configuraciones
+.env
+*.db
+
+
+# .gitignore
+echo "dist/main.exe" >> .gitignore
+echo "build/main/main.pkg" >> .gitignore
+echo "build/main/PYZ-00.pyz" >> .gitignore
