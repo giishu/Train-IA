@@ -1,0 +1,70 @@
+LOG,Nombre,Variable,Tipo,Ciclo reporte,Modelo,Mínimo,Máximo,Alerta,Detalle
+LOG VARIABLES LOCOMOTORA,ANULACION DE ACELERACION,Anulacion de Aceleracion,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,,"Se puede disparar por varios motivos, no todos implican una falla"
+,AUX CORTE TRACCION GPS,PID_AUX CORTE TRACCION GPS,Binaria,Al cambiar,TODAS,0,1,,
+,BAJA SET POINT PARA DEBI.CAMPO,Zona UG/IMT secuencias_BAJA SETPOINT DC,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,,Indica la baja de setpoint por cambio en las secuencias FS1 y FS2
+,BAJA SETPOINT EGRESO FS1,Zona UGP/IMT secuencias_ESTADO 7 BAJA SETPOINT,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,,"Cuando se dispara, se deben registrar los valores de corriente, tensión y velocidad, están en otras variables ya programados"
+,BAJA SETPOINT EGRESO FS2,Zona UGP/IMT secuencias_ESTADO 6 BAJA SETPOINT,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,,"Cuando se dispara, se deben registrar los valores de corriente, tensión y velocidad, están en otras variables ya programados"
+,BAJA SETPOINT INGRESO FS1,Zona UGP/IMT secuencias_ESTADO 2 BAJA SETPOINT,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,,"Cuando se dispara, se deben registrar los valores de corriente, tensión y velocidad, están en otras variables ya programados"
+,BAJA SETPOINT INGRESO FS2,Zona UGP/IMT secuencias_ESTADO 4 BAJA SETPOINT,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,,"Cuando se dispara, se deben registrar los valores de corriente, tensión y velocidad, están en otras variables ya programados"
+,BIT DE CONMUTACION DE PID POR PATINAJE,"Bit de conmutacion de Variable de control en PID - Por control de WS , PAtinaje entre grupos, etc.",Binaria,Al cambiar,TODAS,0,1,1,"El patinaje puede causar baja de setpoint, corrientes, tensión. Es clave poder interpretar los valores de corrientes y tensión en instantes previos y posteriores"
+,CONMUTACION PID POR PATINAJE ENTRE GRUPOS,Bit de conmutacion variable PID - Patinaje Grupo,Binaria,Al cambiar,TODAS,0,1,1,"Cuando se dispara, son relevantes los valores de corrientes por grupo y de setpoint"
+,CONMUTACION PID POR PATINAJE WS,Bit de conmutacion variable PID - WS,Binaria,Al cambiar,TODAS,0,1,1,"Cuando se dispara, son relevantes los valores de corrientes por grupo y de setpoint"
+,CONTADOR DE HORAS CON POTENCIA,Contador de Horas DB_Motor con Potencia Horas,Numérica,Al cambiar,TODAS,0,,,
+,CONTADOR DE HORAS CON RPM,Contador de Horas DB_Motor con RPM Horas,Numérica,Al cambiar,TODAS,0,,,
+,CONTADOR DE MINUTOS CON POTENCIA,Contador de Horas DB_Motor con Potencia Minutos,Numérica,Al cambiar,TODAS,0,,,
+,CONTADOR DE MINUTOS CON RPM,Contador de Horas DB_Motor con RPM Minutos,Numérica,Al cambiar,TODAS,0,,,
+,Corriente Ent FS1,HMI_I entrada FS1,Numérica,Al cambiar,TODAS,0,520/600/800/840,,Reporta un valor de corriente cuando se da BAJA SETPOINT INGRESO FS1
+,Corriente Ent FS2,HMI_I entrada FS2,Numérica,Al cambiar,TODAS,0,520/600/800/840,,Reporta un valor de corriente cuando se da BAJA SETPOINT INGRESO FS2
+,Corriente medicion,I tot Medicion (REF),Numérica,Al cambiar,TODAS,0,1560/1800/1600/2520,1650/1900/1700/2700,Si excede la suma de corriente nominal de los grupos es un problema
+,Corriente Sal FS1,HMI_I salida FS1,Numérica,Al cambiar,TODAS,0,520/600/800/840,,Reporta un valor de corriente cuando se da BAJA SETPOINT SALIDA FS1
+,Corriente Sal FS2,HMI_I salida FS2,Numérica,Al cambiar,TODAS,0,520/600/800/840,,Reporta un valor de corriente cuando se da BAJA SETPOINT SALIDA FS2
+,ENFRIAMIENTO SETEADO,IEC_Counter_0_DB_PV,Binaria,Al cambiar,TODAS,0,1,1,
+,ENFRIAMIENTO TRANSCURRIDO,IEC_Counter_0_DB_CV,Binaria,Al cambiar,TODAS,0,1,,
+,Exc (Salida PID 1) - Imax Pmax/U,Exc (Salida PID 1) - Imax Pmax/U,Numérica,Al cambiar,ALCO/GAIA/GR12,0/6/20,60/100,,"Este valor es una salida que se referencia en el control de corriente y potencia, las referencias son distintas según el tipo de excitación, que depende del tipo de motor y de generador instalados. No hay valores erróneos pero una tendencia negativa puede ser estar por largos periodos en el valor máximo. Saltos de valores mayores a 7/8 pueden ser un problema en varios casos"
+,I MAX IMT,I MAX de IMT,Numérica,Al cambiar,TODAS,0,520/600/800/840,,"Es el máximo instantáneo de las mediciones de corrientes, siempre coincide con alguna de las que se estén midiendo"
+,IMT14,IMT14 / IMT145 ESCALADA,Numérica,Al cambiar,TODAS,0,520/600/800/840,550/650/900/950,Medición de corriente de grupo 14 o 145 (GR12)
+,IMT25,IMT25 / IMT236 ESCALADA,Numérica,Al cambiar,TODAS,0,520/600/800/840,550/650/900/950,Medición de corriente de grupo 25 o 236 (GR12)
+,IMT36,IMT36 ESCALADA,Numérica,Al cambiar,ALCO/GAIA/GT22,0,520/600/800/840,550/650/900/950,Medición de corriente de grupo 36
+,INGRESO FS1,Zona UGP/IMT secuencias_ESTADO 3 - PRIMER DC,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,,"Indica el ingreso de FS1, debería producir un descenso de la corriente en los grupos, sin perder potencia"
+,INGRESO FS2,Zona UGP/IMT secuencias_ESTADO 5 - SEGUNDO DC,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,,"Indica el ingreso de FS2, debería producir un descenso de la corriente en los grupos, sin perder potencia"
+,NIVEL DE COMBUSTIBLE ESCALADO,Presion  - combustible - Nivel Agua_NIVEL DE COMBUSTIBLE ESCALADO,Numérica,Al cambiar,TODAS,,,,
+,PARADA PULSADOR MANUAL,Parada diesel filtro 2s,Binaria,Al cambiar,TODAS,0,1,,"Este indicador es el de detención del motor, luego del 1 deberían bajar las RPM progresivamente"
+,PID_ABRE GF PROBLEMA CONTROL,PID_ABRE GF PROBLEMA CONTROL,Binaria,Al cambiar,TODAS,0,1,,
+,PID_I SP EXC. RAMA,PID_I SP EXC. RAMA,Numérica,Al cambiar,ALCO/GAIA/GR12,0,520/600/800/840,,"Es un valor que calcula el PLC, está limitado a la corriente nominal de la locomotora y va variando por cada instante dependiendo de la tensión UGP. Primero se mantiene fijo en cada punto y cuando UGP es suficientemente elevada, I SP EXC. RAMA empieza a decrecer. Para punto 1 el máximo es 270, para punto 2 es 500 y para el resto es 660/880"
+,PID_PID CERO,PID_PID CERO,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,,"Se puede disparar por varios motivos, no todos implican una falla"
+,PID_SP CERO PROBLEMA CONTROL,PID_SP CERO PROBLEMA CONTROL,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,1,
+,POTENCIA INSTANTANEA CV,Potencia instantanea HP,Numérica,Al cambiar,TODAS,0,1200/1500/2150,1600/2300,"Es un cálculo en función de I tot Medicion (REF) y UGP ESCALADA. Si bien puede asumir cualquier valor en la escala escrita, depende del punto de aceleración y de la medición de RPM en la mayoría de los casos. En las GT22 solo se calcula y no se puede controlar el valor"
+,PRESION ACEITE COMPRESOR ESCALADA,Presion  - combustible - Nivel Agua_PRESION TUBO DE FRENO ESCALADA,Numérica,Al cambiar,TODAS,0,6,,"Medición de aire en un sistema de freno, el objetivo suele ser 5,7"
+,PRESION ACEITE MD ESCALADA,Presion  - combustible - Nivel Agua_PRESION ACEITE MD ESCALADA,Numérica,Al cambiar,TODAS,0,6,,"Medición de aceite del motor, aumenta conforme a los puntos de aceleración"
+,PRESION CILINDRO FRENO ESCALADA,Presion  - combustible - Nivel Agua_PRESION DEPOSITO PRINCIPAL ESCALADA,Numérica,Al cambiar,TODAS,0,16,,"Medición del depósito principal de aire, luego de cargar al poner en marcha suele estar entre 7 y 9"
+,PRESION DEPOSITO PRINCIPAL ESCALADA,Presion  - combustible - Nivel Agua_PRESION CILINDRO FRENO ESCALADA,Numérica,Al cambiar,TODAS,0,6,,"Medición de aire en un sistema de freno, el objetivo suele ser 3"
+,PRESION TUBO DE FRENO ESCALADA,Presion  - combustible - Nivel Agua_PRESION ACEITE COMPRESOR ESCALADA,Numérica,Al cambiar,TODAS,0,6,,Medición de aceite del compresor
+,PROTECCION ZONA 4,Fs Zona - 4,Binaria,Al cambiar,TODAS,0,1,1,Indica que se excedió un máximo de seguridad del producto entre tensión y corriente total
+,PT100 TA - Ingreso electro,Control de Temperatura_PT100 TA,Binaria,Al cambiar,TODAS,0,1,,Indica que se alcanza la primera temperatura de refrigeración
+,Temperatura PT100 Motor,Control de Temperatura_PT100 ESCALADA,Numérica,10 s,TODAS,0,110,91,En función de esta temperatura van activándose y desactivándose ventiladores o suben su velocidad. Según el modelo de locomotora esas temperaturas pueden variar
+,PT100 SAL AGUA MD ESCALADA,Control de Temperatura_PT100 SAL AGUA MD ESCALADA,Numérica,10 s,TODAS,0,110,96,"Sirve de referencia en caso de no tener la medición de entrada (PT100 ESCALADA), suele estar unos 5 °C por encima"
+,PT100 TEMP AC MD ESCALADA,Control de Temperatura_PT100 TEMP AC MD ESCALADA,Numérica,10 s,TODAS,0,110,97,Medición de temperatura de aceite del motor
+,REPOSO SECUENCIAS,Zona UGP/IMT secuencias_ESTADO 1 - ESTADO INICIAL,Binaria,Al cambiar,ALCO/GAIA/GR12,0,1,,Indica el estado de reposo de las secuencias FS1 y FS2
+,RPM,RPM medidas,Numérica,Al cambiar,TODAS,0,835/904/990,925/990/1100,"Si bien puede asumir cualquier valor dentro de la escala, debe estabilizarse según el punto de aceleracion HMI_THS y los valores guardados y los de manual"
+,RPM punto actual,Rpm Punto Actual,Numérica,Al cambiar,TODAS,0,835/904/990,,Son las que se guardan en memoria para usar en el control
+,THS,HMI_THS Numero,Numérica,Al cambiar,TODAS,0,8,,"Indica punto de aceleración, se relaciona con valores estabilizados de RPM"
+,THS MD,HMI_THS Numero MD,Numérica,Al cambiar,TODAS,,,,
+,tiempos de retardo corte por pcs_anu. acel,tiempos de retardo corte por pcs_retardo anu. acel,Binaria,Al cambiar,TODAS,0,1,1,Se dispara luego de 3 segundos de disparada la alarma PCS
+,tiempos de retardo corte por pcs_set point cero,tiempos de retardo corte por pcs_retardo set point cero,Binaria,Al cambiar,TODAS,0,1,1,Se dispara luego de 10 segundos de disparado el retardo de anulacion de aceleración por PCS
+,TIEMPO ACUMULADO TOTAL,Corriente y Sobre Carga_TAT - Tiempo acumulado Total,Numérica,Al cambiar,TODAS,0,,,
+,TIEMPO ENFRIAMIENTO 1,Corriente y Sobre Carga_TE1 - TIEMPO ENFR. 1,Numérica,Al cambiar,TODAS,0,,,
+,TIEMPO ENFRIAMIENTO 2,Corriente y Sobre Carga_TE2 - TIEMPO ENFR. 2,Numérica,Al cambiar,TODAS,0,,,
+,TIEMPO ENFRIAMIENTO 3,Corriente y Sobre Carga_TE3 - TIEMPO ENFR. 3,Numérica,Al cambiar,TODAS,0,,,
+,TIEMPO SOBRECARGA 1,Corriente y Sobre Carga_TA1 - TIEMPO ACUM 1,Numérica,Al cambiar,TODAS,0,,,
+,TIEMPO SOBRECARGA 2,Corriente y Sobre Carga_TA2 - TIEMPO ACUM 2,Numérica,Al cambiar,TODAS,0,,,
+,TIEMPO SOBRECARGA 3,Corriente y Sobre Carga_TA3 - TIEMPO ACUM 3,Numérica,Al cambiar,TODAS,0,,,
+,UGP ESCALADA,UGP ESCALADA,Numérica,Al cambiar,TODAS,0,1000,>1000,"Mide el voltaje del generador, la falla concreta es superar los 1000 V, se relaciona con la potencia y las corrientes"
+,Veloc Ent FS1,HMI_Veloc entrada FS1,Numérica,Al cambiar,TODAS,0,80,,Reporta un valor de velocidad cuando se da BAJA SETPOINT INGRESO FS1
+,Veloc Ent FS2,HMI_Veloc entrada FS2,Numérica,Al cambiar,TODAS,0,80,,Reporta un valor de velocidad cuando se da BAJA SETPOINT INGRESO FS2
+,Veloc Sal FS1,HMI_Veloc salida FS1,Numérica,Al cambiar,TODAS,0,80,,Reporta un valor de velocidad cuando se da BAJA SETPOINT SALIDA FS1
+,Veloc Sal FS2,HMI_Veloc salida FS2,Numérica,Al cambiar,TODAS,0,80,,Reporta un valor de velocidad cuando se da BAJA SETPOINT SALIDA FS2
+,VELOCIDAD (KM/Hr),Velocidad Medida,Numérica,Al cambiar,TODAS,0,80,,Medición de velocidad de avance de locomotora
+,Voltaje Ent FS1,HMI_V entrada FS1,Numérica,Al cambiar,TODAS,0,1000,,Reporta un valor de voltaje cuando se da BAJA SETPOINT INGRESO FS1
+,Voltaje Ent FS2,HMI_V entrada FS2,Numérica,Al cambiar,TODAS,0,1000,,Reporta un valor de voltaje cuando se da BAJA SETPOINT INGRESO FS2
+,Voltaje Sal FS1,HMI_V salida FS1,Numérica,Al cambiar,TODAS,0,1000,,Reporta un valor de voltaje cuando se da BAJA SETPOINT SALIDA FS1
+,Voltaje Sal FS2,HMI_V salida FS2,Numérica,Al cambiar,TODAS,0,1000,,Reporta un valor de voltajje cuando se da BAJA SETPOINT SALIDA FS2
