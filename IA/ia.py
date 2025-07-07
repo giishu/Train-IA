@@ -7,8 +7,9 @@ from IA.datos import cargar_csv, seleccionar_archivo, registrar_consulta
 from typing import Optional
 import random
 import matplotlib.pyplot as plt
-
-
+import json
+import html
+import numpy as np
 
 
 # Configuración (usa variable de entorno en producción!)
@@ -114,93 +115,149 @@ class LocomotoraBot:
         return respuesta
    
     def analisis_con_codigo_sin_ver_df(self, pregunta: str, df: pd.DataFrame) -> str:
-        """La IA genera código basándose solo en la pregunta. Luego lo ejecuta localmente sobre el df."""
+        """La IA genera código basándose en la pregunta y el catálogo de variables."""
+        import numpy as np
         try:
-            columnas = df.columns.tolist()
+            # 1. Preprocesamiento crítico del DataFrame
+            df['VarValue'] = pd.to_numeric(df['VarValue'], errors='coerce')
+            df['TimeString'] = pd.to_datetime(df['TimeString'], errors='coerce')
+            
+            # 2. Cargar y diagnosticar el catálogo de variables
+            try:
+                df_catalogo = pd.read_csv("data/Clasificación Variables LOGs IA - Hoja1.csv")
+                print(f"🔍 DEBUG - Columnas del catálogo: {list(df_catalogo.columns)}")
+                print(f"🔍 DEBUG - Primeras filas del catálogo:\n{df_catalogo.head()}")
+            except Exception as e:
+                return f"❌ Error cargando catálogo: {e}"
+            
+            # 3. Identificar la columna correcta de variables (flexible)
+            # Basado en tu CSV, la columna se llama 'Variable'
+            posibles_columnas_variables = [
+                'Variable',  # Esta es la correcta según tu CSV
+                'LOG VARIABLES LOCOMOTORA',
+                'VarName', 
+                'variable',
+                'nombre',
+                'Nombre'
+            ]
+            
+            columna_variables = None
+            for col in posibles_columnas_variables:
+                if col in df_catalogo.columns:
+                    columna_variables = col
+                    break
+            
+            # Si no encuentra ninguna, usar la primera columna
+            if columna_variables is None:
+                columna_variables = df_catalogo.columns[0]
+                print(f"⚠️ WARNING: Usando primera columna como variables: '{columna_variables}'")
+            
+            # 4. Crear diccionario de variables para fácil acceso
+            catalogo_vars = {}
+            for _, row in df_catalogo.iterrows():
+                if pd.notna(row[columna_variables]) and str(row[columna_variables]).strip():
+                    variable_name = str(row[columna_variables]).strip()
+                    
+                    # Extraer información usando los nombres reales de las columnas
+                    tipo = str(row.get('Tipo', '')).strip() if pd.notna(row.get('Tipo', '')) else ''
+                    descripcion = str(row.get('Detalle', '')).strip() if pd.notna(row.get('Detalle', '')) else ''
+                    minimo = str(row.get('Mínimo', '')).strip() if pd.notna(row.get('Mínimo', '')) else ''
+                    maximo = str(row.get('Máximo', '')).strip() if pd.notna(row.get('Máximo', '')) else ''
+                    
+                    catalogo_vars[variable_name] = {
+                        'tipo': tipo,
+                        'descripcion': descripcion,
+                        'minimo': minimo,
+                        'maximo': maximo
+                    }
+            
+            print(f"🔍 DEBUG - Variables encontradas en catálogo: {len(catalogo_vars)}")
+            
+            # 5. Construir el prompt con información contextual
+            catalogo_info = "\n".join(
+                f"{k}: {v['tipo']} ({v['minimo']}-{v['maximo']}) - {v['descripcion']}"
+                for k, v in list(catalogo_vars.items())[:50]  # Limitar a 50 para no sobrecargar
+                if k  # Solo incluir variables con nombre no vacío
+            )
+            
+            prompt = f"""
+            Eres un analista experto de datos de locomotoras. Trabajarás con un DataFrame `df` que contiene:
+            - VarName: Nombre de la variable (ej: 'BAJA SETPOINT EGRESO FS1')
+            - VarValue: Valor numérico (ya convertido a float)
+            - TimeString: Marca temporal (ya convertido a datetime)
 
+            Catálogo de variables disponibles (formato Nombre: Tipo - Descripción):
+            {catalogo_info}
 
-            # Paso 1: Generar el código
-            prompt_codigo = f"""
-            Eres un experto en análisis de datos con pandas.
+            Instrucciones CRÍTICAS:
+            1. Las variables binarias usan 0/1 (ya convertidos a numéricos)
+            2. Siempre filtra primero por VarName relevante usando df[df['VarName'] == 'NOMBRE_VARIABLE']
+            3. Para series temporales con resample, USA SOLO COLUMNAS NUMÉRICAS:
+            - df_filtrado = df[df['VarName'] == 'variable'].copy()
+            - df_filtrado = df_filtrado[['TimeString', 'VarValue']].set_index('TimeString')
+            - resultado = df_filtrado.resample('h').mean()  # Usa 'h' no 'H'
+            4. Si hay valores faltantes, usa .dropna() antes de operaciones
+            5. Verifica que las variables existan antes de usarlas
+            6. Para análisis temporal, ordena por TimeString primero
+            7. NUNCA hagas resample() sobre DataFrames que contengan columnas de texto
+            8. Siempre selecciona solo las columnas numéricas antes del resample
 
+            🚫 IMPORTANTE: El DataFrame `df` ya está cargado y contiene los datos reales. NO lo crees ni lo reemplaces. No simules datos. Usa directamente el `df` que ya existe.
 
-            El DataFrame se llama `df` y tiene las siguientes columnas: {columnas}.
+            Pregunta a responder:
+            "{pregunta}"
 
-
-            - `VarName` contiene el nombre de la variable (por ejemplo, 'RPM - 7KF00', 'PRESION ACEITE COMPRESOR - 7KF00', etc.)
-            - `VarValue` contiene el valor medido (número).
-            - `TimeString` contiene la fecha y hora de la medición.
-            - Cada fila representa una única medición de una variable en un instante de tiempo.
-
-
-            Usá pandas para responder la siguiente pregunta. Si es necesario, filtrá las filas que coincidan con palabras clave dentro de la columna 'VarName'.
-
-
-            Pregunta del usuario:
-            \"{pregunta}\"
-
-
-            Genera solamente el código Python necesario para responder a esa pregunta. Sin explicaciones. Sin comentarios. Asegurate de que el resultado se imprima con `print(...)` al final.
+            Genera SOLO código Python válido que:
+            1. Comience con 'import pandas as pd' e 'import numpy as np'
+            2. Contenga manejo de tipos de datos seguro
+            3. Incluya filtrado por variables relevantes
+            4. Verifique que las variables existan
+            5. Finalice con print(resultado)
             """
+            
+            # 6. Generar y ejecutar el código
+            response = self.model.generate_content(prompt)
+            codigo_raw = response.text.strip()
+            
+            # Limpiar el código de markdown
+            if "```python" in codigo_raw:
+                codigo = codigo_raw.split("```python")[1].split("```")[0].strip()
+            elif "```" in codigo_raw:
+                codigo = codigo_raw.split("```")[1].strip()
+            else:
+                codigo = codigo_raw
+            
+            if not codigo:
+                return "❌ Error: No se generó código válido"
 
+            print(f"🔍 DEBUG - Código generado:\n{codigo}")
 
-            response = self.model.generate_content(prompt_codigo)
-            codigo = response.text.strip().strip("```python").strip("```")
-
-
-            local_vars = {"df": df.copy(), "pd": pd}
-
-
+            # 7. Ejecutar con validación
+            import numpy as np
+            local_vars = {"df": df.copy(), "pd": pd, "np": np}
             buffer = io.StringIO()
-            with contextlib.redirect_stdout(buffer):
-                exec(codigo, local_vars)
-
+            
+            try:
+                with contextlib.redirect_stdout(buffer):
+                    exec(codigo, local_vars)
+            except Exception as e:
+                error_msg = f"❌ Error en ejecución: {type(e).__name__}: {str(e)}\n"
+                error_msg += f"🔍 Código que falló:\n{codigo}\n"
+                
+                if "agg function failed" in str(e):
+                    error_msg += "💡 SOLUCIÓN: Revisa que todas las columnas usadas en operaciones numéricas sean de tipo float/int"
+                elif "KeyError" in str(e):
+                    error_msg += "💡 SOLUCIÓN: Verifica que los nombres de variables sean exactos"
+                elif "empty" in str(e).lower():
+                    error_msg += "💡 SOLUCIÓN: Es posible que el filtro no encuentre datos"
+                    
+                return error_msg
 
             resultado = buffer.getvalue().strip()
-
-
-            # Buscar el último DataFrame creado que no sea 'df'
-            dfs_generados = [v for k, v in local_vars.items() if isinstance(v, pd.DataFrame) and k != 'df']
-            df_resultado = dfs_generados[-1] if dfs_generados else None
-
-
-            if df_resultado is not None:
-                mostrar_grafico_si_aplica(df_resultado)
-
-
-
-
-            # Paso 3: Explicar el resultado
-            prompt_explicacion = f"""
-            Este fue el resultado de ejecutar código Python sobre un DataFrame en pandas:
-
-
-            Código:
-            {codigo}
-
-
-            Resultado:
-            {resultado}
-
-
-            Explica al usuario qué significa este resultado, como si no supiera programar.
-            """
-
-
-            explicacion = self.model.generate_content(prompt_explicacion).text.strip()
-           
-            resumen = {
-                "resultado": resultado,
-                "respuesta": explicacion
-            }
-
-
-            exito = registrar_consulta("analisis_resultado", resumen)
-            return f"📊 Código generado:\n```python\n{codigo}\n```\n\n📈 Resultado:\n{resultado}\n\n🧠 Explicación:\n{explicacion}"
-
+            return resultado if resultado else "✅ Análisis completado (sin output)"
 
         except Exception as e:
-            return f"❌ Error ejecutando el análisis: {str(e)}"
+            return f"❌ Error general: {type(e).__name__}: {str(e)}"
 
 
 def mostrar_grafico_si_aplica(df: pd.DataFrame):
@@ -310,3 +367,5 @@ def consultar_bot(pregunta: str, df: Optional[pd.DataFrame] = None, ruta_csv: Op
         df = cargar_csv(ruta_csv)
    
     return bot.generar_respuesta(pregunta, df)
+
+

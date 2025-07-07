@@ -27,10 +27,7 @@ def seleccionar_locomotora():
         except ValueError:
             print("Entrada no válida. Ingrese un número del 1 al 4.")
 
-
-# Elección de locomotora al inicio
 locomotora_seleccionada = seleccionar_locomotora()
-
 
 def seleccionar_archivo_manual():
     root = tk.Tk()
@@ -53,9 +50,6 @@ def seleccionar_archivo_manual():
         return None, None
     finally:
         root.destroy()
-
-
-
 
 def menu_carga() -> pd.DataFrame:
     print("\n--- CARGAR DATOS DE LOCOMOTORAS ---")
