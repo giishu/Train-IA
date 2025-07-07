@@ -12,6 +12,7 @@ import html
 import numpy as np
 
 
+
 # Configuración (usa variable de entorno en producción!)
 genai.configure(api_key='AIzaSyA2PipvauvVPmrGQz-Hn7nhu_VcWHypeEo')
 
@@ -124,7 +125,7 @@ class LocomotoraBot:
             
             # 2. Cargar y diagnosticar el catálogo de variables
             try:
-                df_catalogo = pd.read_csv("data/Clasificación Variables LOGs IA - Hoja1.csv")
+                df_catalogo = pd.read_excel("data/Clasificación Variables LOGs IA.xlsx", engine='openpyxl')
                 print(f"🔍 DEBUG - Columnas del catálogo: {list(df_catalogo.columns)}")
                 print(f"🔍 DEBUG - Primeras filas del catálogo:\n{df_catalogo.head()}")
             except Exception as e:
