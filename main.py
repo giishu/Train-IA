@@ -11,21 +11,26 @@ import os
 
 
 def seleccionar_locomotora():
-    opciones = ["LOCOMOTORA 1", "LOCOMOTORA 2", "LOCOMOTORA 3", "LOCOMOTORA 4"]
-    print("Seleccione el tipo de locomotora:")
-    for i, opcion in enumerate(opciones, 1):
+    opciones = ["ALCO", "GAIA", "GR12", "GT22"]
+    
+    print("\n📋 Seleccione el tipo de locomotora:")
+    for i, opcion in enumerate(opciones, start=1):
         print(f"{i}. {opcion}")
+    
+
     while True:
-        try:
-            seleccion = int(input("Ingrese el número de la locomotora (1-4): "))
-            if 1 <= seleccion <= 4:
+        seleccion = input("Ingrese el número de la locomotora (1-4): ").strip()
+        if seleccion.isdigit():
+            seleccion = int(seleccion)
+            if 1 <= seleccion <= len(opciones):
                 locomotora = opciones[seleccion - 1]
-                print(f"Has seleccionado: {locomotora}")
+                print(f"✅ Has seleccionado: {locomotora}")
                 return locomotora
             else:
-                print("Por favor, ingrese un número válido entre 1 y 4.")
-        except ValueError:
-            print("Entrada no válida. Ingrese un número del 1 al 4.")
+                print("⚠ Por favor, ingrese un número válido entre 1 y 4.")
+        else:
+            print("❌ Entrada no válida. Ingrese solo un número del 1 al 4.")
+
 
 locomotora_seleccionada = seleccionar_locomotora()
 

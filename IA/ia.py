@@ -125,7 +125,7 @@ class LocomotoraBot:
             
             # 2. Cargar y diagnosticar el catálogo de variables
             try:
-                df_catalogo = pd.read_excel("data/Clasificación Variables LOGs IA.xlsx", engine='openpyxl')
+                df_catalogo = pd.read_csv("data/Clasificación Variables LOGs IA (1) - Hoja1.csv")
                 print(f"🔍 DEBUG - Columnas del catálogo: {list(df_catalogo.columns)}")
                 print(f"🔍 DEBUG - Primeras filas del catálogo:\n{df_catalogo.head()}")
             except Exception as e:
