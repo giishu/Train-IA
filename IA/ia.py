@@ -51,6 +51,39 @@ class LocomotoraBot:
         except Exception as e:
             raise FileNotFoundError(f"Error cargando catálogo: {e}")
     
+    def _convertir_valor_limite(self, valor_raw):
+        """Convierte valores que pueden tener formato '904/990' o '100/200/300' a float (toma el máximo)"""
+        if pd.isna(valor_raw) or not str(valor_raw).strip():
+            return None
+        
+        valor_str = str(valor_raw).strip()
+        
+        # Si contiene '/', dividir y tomar el valor máximo
+        if '/' in valor_str:
+            try:
+                valores = valor_str.split('/')
+                valores_numericos = []
+                for v in valores:
+                    v_clean = v.strip().replace(",", ".")
+                    if v_clean:  # Solo si no está vacío
+                        valores_numericos.append(float(v_clean))
+                
+                if valores_numericos:
+                    return max(valores_numericos)
+                else:
+                    return None
+            except (ValueError, TypeError) as e:
+                print(f"⚠️  Error procesando valor con barras '{valor_str}': {e}")
+                return None
+        
+        # Si es un valor normal (sin barras)
+        try:
+            return float(valor_str.replace(",", "."))
+        except (ValueError, TypeError) as e:
+            print(f"⚠️  Error procesando valor simple '{valor_str}': {e}")
+            return None
+
+    # Reemplaza la parte del procesamiento de límites en _procesar_limites_locomotora():
     def _procesar_limites_locomotora(self, locomotora: str) -> Tuple[Dict[str, VariableInfo], Dict[str, Dict[str, float]]]:
         """Procesa los límites y información para un tipo de locomotora específico"""
         if locomotora not in self.columnas_por_tipo:
@@ -62,7 +95,10 @@ class LocomotoraBot:
         catalogo_vars = {}
         limites_vars = {}
         
-        for _, row in df_catalogo.iterrows():
+        print(f"🔍 Procesando {len(df_catalogo)} filas del catálogo para {locomotora}")
+        print(f"🔍 Columnas a usar: {cols}")
+        
+        for idx, row in df_catalogo.iterrows():
             if pd.notna(row.get('Variable')) and str(row['Variable']).strip():
                 var_name = str(row['Variable']).strip()
                 
@@ -74,23 +110,55 @@ class LocomotoraBot:
                     descripcion=str(row.get('Detalle', '')).strip() if pd.notna(row.get('Detalle', '')) else ''
                 )
                 
-                # Procesar límites
+                # Procesar límites usando la nueva función
                 try:
-                    info.minimo = float(str(row[cols['min']]).replace(",", ".")) if pd.notna(row.get(cols['min'])) else None
-                    info.maximo = float(str(row[cols['max']]).replace(",", ".")) if pd.notna(row.get(cols['max'])) else None
-                    info.alerta = float(str(row[cols['alerta']]).replace(",", ".")) if pd.notna(row.get(cols['alerta'])) else None
-                except (ValueError, TypeError):
-                    pass
+                    # Obtener valores de límites
+                    min_raw = row.get(cols['min'])
+                    max_raw = row.get(cols['max'])
+                    alerta_raw = row.get(cols['alerta'])
+                    
+                    # Convertir usando la nueva función
+                    min_val = self._convertir_valor_limite(min_raw)
+                    max_val = self._convertir_valor_limite(max_raw)
+                    alerta_val = self._convertir_valor_limite(alerta_raw)
+                    
+                    # Asignar valores procesados
+                    if min_val is not None:
+                        info.minimo = min_val
+                    if max_val is not None:
+                        info.maximo = max_val
+                    if alerta_val is not None:
+                        info.alerta = alerta_val
+                    
+                    # Debug específico para RPM medidas
+                    if "RPM" in var_name.upper():
+                        print(f"🔍 DEBUG RPM: {var_name}")
+                        print(f"   Min raw: {min_raw} -> {min_val}")
+                        print(f"   Max raw: {max_raw} -> {max_val}")
+                        print(f"   Alerta raw: {alerta_raw} -> {alerta_val}")
+                        
+                except Exception as e:
+                    print(f"⚠️  Error procesando límites para {var_name}: {e}")
+                    continue
                 
                 catalogo_vars[var_name] = info
                 
-                # Guardar límites para validación rápida
-                if info.minimo is not None and info.maximo is not None:
-                    limites_vars[var_name.upper()] = {
-                        'min': info.minimo,
-                        'max': info.maximo,
-                        'alerta': info.alerta
+                # Guardar límites para validación rápida (usar múltiples claves)
+                if min_val is not None and max_val is not None:
+                    limite_dict = {
+                        'min': min_val,
+                        'max': max_val,
+                        'alerta': alerta_val
                     }
+                    
+                    # Guardar con nombre exacto
+                    limites_vars[var_name] = limite_dict
+                    # Guardar con nombre en mayúsculas (compatibilidad)
+                    limites_vars[var_name.upper()] = limite_dict
+                    
+                    print(f"✅ Límites guardados para '{var_name}': min={min_val}, max={max_val}")
+        
+        print(f"🔍 Total variables con límites: {len(limites_vars)//2}")  # Dividir por 2 porque cada variable se guarda 2 veces
         
         return catalogo_vars, limites_vars
     
@@ -288,6 +356,49 @@ Genera ÚNICAMENTE código Python que analice los datos YA CARGADOS:
         info += f"- Rango de fechas: {df['TimeString'].min()} a {df['TimeString'].max()}\n"
         info += f"- Ejemplos de variables: {list(df['VarName'].unique()[:5])}"
         return info
+    
+    def debug_limites_variable(self, variable_name: str, locomotora: str = "ALCO") -> str:
+        """Método para debuggear límites de una variable específica"""
+        try:
+            catalogo_vars, limites_vars = self._procesar_limites_locomotora(locomotora)
+            
+            info = f"🔍 DEBUG para variable: '{variable_name}'\n"
+            info += f"🔍 Locomotora: {locomotora}\n\n"
+            
+            # Buscar en catálogo
+            if variable_name in catalogo_vars:
+                var_info = catalogo_vars[variable_name]
+                info += f"✅ Variable encontrada en catálogo:\n"
+                info += f"   Nombre natural: {var_info.nombre_natural}\n"
+                info += f"   Tipo: {var_info.tipo}\n"
+                info += f"   Mínimo: {var_info.minimo}\n"
+                info += f"   Máximo: {var_info.maximo}\n"
+                info += f"   Alerta: {var_info.alerta}\n\n"
+            else:
+                info += f"❌ Variable NO encontrada en catálogo\n\n"
+            
+            # Buscar en límites
+            found_in_limits = False
+            for key, limits in limites_vars.items():
+                if key.upper() == variable_name.upper() or key == variable_name:
+                    info += f"✅ Límites encontrados con clave: '{key}'\n"
+                    info += f"   Min: {limits['min']}\n"
+                    info += f"   Max: {limits['max']}\n"
+                    info += f"   Alerta: {limits.get('alerta', 'N/A')}\n\n"
+                    found_in_limits = True
+                    break
+            
+            if not found_in_limits:
+                info += f"❌ Variable NO encontrada en limites_vars\n"
+                info += f"🔍 Claves disponibles en limites_vars:\n"
+                for key in list(limites_vars.keys())[:10]:  # Mostrar primeras 10
+                    info += f"   - '{key}'\n"
+                info += f"   ... (total: {len(limites_vars)} claves)\n\n"
+            
+            return info
+            
+        except Exception as e:
+            return f"❌ Error en debug: {e}"
     
     def analisis_con_codigo_sin_ver_df(self, pregunta: str, df: pd.DataFrame, locomotora_seleccionada: str = "ALCO") -> str:
         """
