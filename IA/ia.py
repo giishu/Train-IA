@@ -7,6 +7,8 @@ from IA.datos import cargar_csv, seleccionar_archivo, registrar_consulta
 from typing import Optional
 import random
 import matplotlib.pyplot as plt
+from dataclasses import dataclass
+from functools import lru_cache
 import json
 import html
 import numpy as np
@@ -16,26 +18,30 @@ import numpy as np
 # Configuración (usa variable de entorno en producción!)
 genai.configure(api_key='AIzaSyA2PipvauvVPmrGQz-Hn7nhu_VcWHypeEo')
 
+@dataclass
+class VariableInfo:
+    nombre_natural: str
+    tipo: str
+    ciclo: str
+    descripcion: str
+    minimo: Optional[float] = None
+    maximo: Optional[float] = None
+    alerta: Optional[float] = None
 
 class LocomotoraBot:
-    def __init__(self):
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
-        self.saludos = [
-            "¡Hola! 👋 Soy tu asistente de locomotoras. ¿En qué puedo ayudarte hoy?",
-            "¡Buenas! 🚂 Aquí analizando datos ferroviarios. ¿Qué necesitas?",
-            "¡Hola humano! 🤖💬 Listo para diagnosticar esas máquinas."
-        ]
-        self.despedidas = [
-            "¡Hasta luego! Que tus rieles siempre estén alineados 🛤️",
-            "Nos vemos. ¡Recuerda hacer mantenimiento preventivo! 🔧",
-            "Bot desconectado. ¡Chuuu-chuuu! 🚆"
-        ]
-        self.errores = [
-            "Ups, tengo un cortocircuito... 💥 Intenta reformular tu pregunta",
-            "Parece que mi motor analítico falló 🛠️ ¿Podrías repetirlo?",
-            "Error 404: No encontré esa respuesta en mi banco de datos"
-        ]
-
+    def __init__(self, model, catalogo_path: str = "data/Clasificación Variables LOGs IA (1) - Hoja1.csv"):
+        self.model = model
+        self.catalogo_path = catalogo_path
+        self._catalogo_cache = None
+        
+        # Mapeo de columnas por tipo de locomotora
+        self.columnas_por_tipo = {
+            "ALCO": {"min": "Mínimo", "max": "Máximo", "alerta": "Alerta"},
+            "GAIA": {"min": "Mínimo.1", "max": "Máximo.1", "alerta": "Alerta.1"},
+            "GR12": {"min": "Mínimo.2", "max": "Máximo.2", "alerta": "Alerta.2"},
+            "GT22": {"min": "Mínimo.3", "max": "Máximo.3", "alerta": "Alerta.3"}
+        }
+    lru_cache(maxsize=1)
 
     def generar_respuesta(self, pregunta: str, df: Optional[pd.DataFrame] = None) -> str:
         """Evalúa el tipo de pregunta y responde acorde"""
@@ -360,6 +366,11 @@ class LocomotoraBot:
         except Exception as e:
             return f"❌ Error general: {type(e).__name__}: {str(e)}"
 
+
+# Función independiente para compatibilidad (si la necesitas fuera de la clase)
+def crear_locomotora_bot(model, catalogo_path: str = "data/Clasificación Variables LOGs IA (1) - Hoja1.csv"):
+    """Factory function para crear una instancia de LocomotoraBot"""
+    return LocomotoraBot(model, catalogo_path)
 
 def mostrar_grafico_si_aplica(df: pd.DataFrame):
     try:
