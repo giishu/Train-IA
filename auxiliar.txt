@@ -1,0 +1,77 @@
+def generar_respuesta(self, pregunta: str, df: Optional[pd.DataFrame] = None) -> str:
+        """Evalúa el tipo de pregunta y responde acorde"""
+        pregunta = pregunta.lower().strip()
+       
+        # Modo conversacional
+        if any(palabra in pregunta for palabra in ["hola", "hi", "qué tal", "cómo estás"]):
+            return random.choice(self.saludos)
+           
+        if any(palabra in pregunta for palabra in ["adiós", "chao", "hasta luego"]):
+            return random.choice(self.despedidas)
+       
+        # Modo técnico
+        if df is not None and not df.empty:
+            return self._analisis_tecnico(pregunta, df)
+        else:
+            return "🔍 Por favor carga datos primero para análisis técnico"
+
+
+    def _analisis_tecnico(self, pregunta: str, df: pd.DataFrame) -> str:
+        """Análisis especializado con datos"""
+        try:
+            contexto = "Eres un ingeniero senior de locomotoras diésel. " + \
+                     "Combina conocimiento técnico con explicaciones claras.\n\n"
+           
+            if "corriente" in pregunta:
+                contexto += "Foco en análisis eléctrico (umbral seguro: 15-25A)"
+            elif "temperatura" in pregunta:
+                contexto += "Foco en termodinámica (rango óptimo: 65-90°C)"
+           
+            datos_relevantes = df.tail(50).to_string()
+           
+            prompt = f"""
+            Eres un ingeniero especializado en locomotoras diésel. Analiza estos datos:
+
+
+            **Variables Clave**:
+            - Presión aceite: Rango normal (10000-12000)
+            - RPM: Rango normal (8000-9000)
+            - Temperaturas (IMT): Rango normal (-30 a 50)
+
+
+            **Datos Recientes**:
+            {df.tail(20).to_string()}
+
+
+            **Pregunta**: "{pregunta}"
+
+
+            **Formato de Respuesta**:
+            1. 📌 Hallazgo principal
+            2. 🔍 Variable crítica (si aplica)
+            3. 🚨 Nivel de riesgo (1-5)
+            4. 🛠️ Acción recomendada
+            """
+           
+            response = self.model.generate_content(prompt)
+            return self._formatear_respuesta(response.text)
+           
+        except Exception as e:
+            return f"{random.choice(self.errores)}. Detalle: {str(e)}"
+
+
+    def _formatear_respuesta(self, respuesta: str) -> str:
+        """Da formato humano a la respuesta técnica"""
+        lineas = respuesta.split('\n')
+        if len(lineas) > 2:  # Se ajustó el chequeo porque ya no hay tip
+            return "\n".join([
+                f"🔧 **Análisis Técnico** 🔧",
+                f"{lineas[0]}",
+                "",
+                "🚨 **Riesgo/Causas**:",
+                f"{lineas[1]}",
+                "",
+                "🛠 **Acciones Recomendadas**:",
+                f"{lineas[2]}"
+            ])
+        return respuesta
