@@ -115,108 +115,190 @@ class LocomotoraBot:
             ])
         return respuesta
    
-    def analisis_con_codigo_sin_ver_df(self, pregunta: str, df: pd.DataFrame) -> str:
+    def analisis_con_codigo_sin_ver_df(self, pregunta: str, df: pd.DataFrame, locomotora_seleccionada: str = "ALCO") -> str:
         """La IA genera código basándose en la pregunta y el catálogo de variables."""
         import numpy as np
+        import os
+        
         try:
             # 1. Preprocesamiento crítico del DataFrame
             df['VarValue'] = pd.to_numeric(df['VarValue'], errors='coerce')
             df['TimeString'] = pd.to_datetime(df['TimeString'], errors='coerce')
             
-            # 2. Cargar y diagnosticar el catálogo de variables
+            # 2. Cargar y procesar el catálogo con el formato correcto
             try:
-                df_catalogo = pd.read_csv("data/Clasificación Variables LOGs IA (1) - Hoja1.csv")
+                ruta_catalogo = "data/Clasificación Variables LOGs IA (1) - Hoja1.csv"
+                # Usar skiprows=1 para saltar la primera fila con los headers de locomotoras
+                df_catalogo = pd.read_csv(ruta_catalogo, skiprows=1)
                 print(f"🔍 DEBUG - Columnas del catálogo: {list(df_catalogo.columns)}")
                 print(f"🔍 DEBUG - Primeras filas del catálogo:\n{df_catalogo.head()}")
             except Exception as e:
                 return f"❌ Error cargando catálogo: {e}"
             
-            # 3. Identificar la columna correcta de variables (flexible)
-            # Basado en tu CSV, la columna se llama 'Variable'
-            posibles_columnas_variables = [
-                'Variable',  # Esta es la correcta según tu CSV
-                'LOG VARIABLES LOCOMOTORA',
-                'VarName', 
-                'variable',
-                'nombre',
-                'Nombre'
-            ]
+            # 3. Mapear columnas según el tipo de locomotora
+            columnas_por_tipo = {
+                "ALCO": {"min": "Mínimo", "max": "Máximo", "alerta": "Alerta"},
+                "GAIA": {"min": "Mínimo.1", "max": "Máximo.1", "alerta": "Alerta.1"},
+                "GR12": {"min": "Mínimo.2", "max": "Máximo.2", "alerta": "Alerta.2"},
+                "GT22": {"min": "Mínimo.3", "max": "Máximo.3", "alerta": "Alerta.3"}
+            }
             
-            columna_variables = None
-            for col in posibles_columnas_variables:
-                if col in df_catalogo.columns:
-                    columna_variables = col
-                    break
+            if locomotora_seleccionada not in columnas_por_tipo:
+                return f"❌ Error: Tipo de locomotora '{locomotora_seleccionada}' no válido. Opciones: {list(columnas_por_tipo.keys())}"
             
-            # Si no encuentra ninguna, usar la primera columna
-            if columna_variables is None:
-                columna_variables = df_catalogo.columns[0]
-                print(f"⚠️ WARNING: Usando primera columna como variables: '{columna_variables}'")
+            cols = columnas_por_tipo[locomotora_seleccionada]
             
-            # 4. Crear diccionario de variables para fácil acceso
+            # 4. Crear diccionario completo de variables con límites
             catalogo_vars = {}
+            limites_vars = {}
+            
             for _, row in df_catalogo.iterrows():
-                if pd.notna(row[columna_variables]) and str(row[columna_variables]).strip():
-                    variable_name = str(row[columna_variables]).strip()
+                if pd.notna(row.get('Variable')) and str(row['Variable']).strip():
+                    var_name = str(row['Variable']).strip()
+                    var_name_upper = var_name.upper()
                     
-                    # Extraer información usando los nombres reales de las columnas
+                    # Información básica
+                    nombre_natural = str(row.get('Nombre', '')).strip() if pd.notna(row.get('Nombre', '')) else ''
                     tipo = str(row.get('Tipo', '')).strip() if pd.notna(row.get('Tipo', '')) else ''
+                    ciclo = str(row.get('Ciclo reporte', '')).strip() if pd.notna(row.get('Ciclo reporte', '')) else ''
                     descripcion = str(row.get('Detalle', '')).strip() if pd.notna(row.get('Detalle', '')) else ''
-                    minimo = str(row.get('Mínimo', '')).strip() if pd.notna(row.get('Mínimo', '')) else ''
-                    maximo = str(row.get('Máximo', '')).strip() if pd.notna(row.get('Máximo', '')) else ''
                     
-                    catalogo_vars[variable_name] = {
+                    # Límites para el tipo de locomotora específico
+                    try:
+                        minimo = float(str(row[cols['min']]).replace(",", ".")) if pd.notna(row.get(cols['min'])) else None
+                        maximo = float(str(row[cols['max']]).replace(",", ".")) if pd.notna(row.get(cols['max'])) else None
+                        alerta = float(str(row[cols['alerta']]).replace(",", ".")) if pd.notna(row.get(cols['alerta'])) else None
+                    except (ValueError, TypeError):
+                        minimo = maximo = alerta = None
+                    
+                    catalogo_vars[var_name] = {
+                        'nombre_natural': nombre_natural,
                         'tipo': tipo,
+                        'ciclo': ciclo,
                         'descripcion': descripcion,
                         'minimo': minimo,
-                        'maximo': maximo
+                        'maximo': maximo,
+                        'alerta': alerta
                     }
+                    
+                    # También guardamos con nombre en mayúsculas para búsqueda
+                    if minimo is not None and maximo is not None:
+                        limites_vars[var_name_upper] = {
+                            'min': minimo,
+                            'max': maximo,
+                            'alerta': alerta
+                        }
             
             print(f"🔍 DEBUG - Variables encontradas en catálogo: {len(catalogo_vars)}")
+            print(f"🔍 DEBUG - Variables con límites para {locomotora_seleccionada}: {len(limites_vars)}")
             
-            # 5. Construir el prompt con información contextual
-            catalogo_info = "\n".join(
-                f"{k}: {v['tipo']} ({v['minimo']}-{v['maximo']}) - {v['descripcion']}"
-                for k, v in list(catalogo_vars.items())[:50]  # Limitar a 50 para no sobrecargar
-                if k  # Solo incluir variables con nombre no vacío
-            )
+            # 5. Función de validación de límites integrada
+            def validar_valor(variable, valor, limites):
+                """Valida si un valor está dentro de los límites esperados"""
+                var_upper = variable.upper()
+                if var_upper not in limites:
+                    return "SIN_LIMITES"
+                
+                lim = limites[var_upper]
+                if valor < lim['min']:
+                    return "DEBAJO_MINIMO"
+                elif valor > lim['max']:
+                    return "ENCIMA_MAXIMO"
+                elif lim.get('alerta') is not None and valor >= lim['alerta']:
+                    return "ZONA_ALERTA"
+                else:
+                    return "NORMAL"
+            
+            # 6. Construir información del catálogo para la IA
+            catalogo_info = ""
+            for var_name, info in list(catalogo_vars.items())[:40]:  # Limitar para no sobrecargar
+                if info['minimo'] is not None and info['maximo'] is not None:
+                    rango = f"[{info['minimo']}-{info['maximo']}]"
+                    if info['alerta'] is not None:
+                        rango += f" ⚠️>{info['alerta']}"
+                else:
+                    rango = "[Sin límites]"
+                
+                catalogo_info += f"• {var_name}: {info['tipo']} {rango}\n"
+                catalogo_info += f"  Descripción: {info['descripcion']}\n"
+                if info['nombre_natural']:
+                    catalogo_info += f"  Nombre natural: {info['nombre_natural']}\n"
+                catalogo_info += "\n"
             
             prompt = f"""
-            Eres un analista experto de datos de locomotoras. Trabajarás con un DataFrame `df` que contiene:
+            Eres un analista experto de datos de locomotoras {locomotora_seleccionada}. Trabajarás con un DataFrame `df` que contiene:
             - VarName: Nombre de la variable (ej: 'BAJA SETPOINT EGRESO FS1')
             - VarValue: Valor numérico (ya convertido a float)
             - TimeString: Marca temporal (ya convertido a datetime)
 
-            Catálogo de variables disponibles (formato Nombre: Tipo - Descripción):
+            CATÁLOGO DE VARIABLES PARA LOCOMOTORA {locomotora_seleccionada}:
             {catalogo_info}
 
-            Instrucciones CRÍTICAS:
+            FUNCIONES Y DATOS DISPONIBLES:
+            - `validar_valor(variable, valor, limites_vars)` retorna:
+            - "NORMAL": Valor dentro del rango normal
+            - "ZONA_ALERTA": Valor en zona de alerta
+            - "DEBAJO_MINIMO": Valor por debajo del mínimo
+            - "ENCIMA_MAXIMO": Valor por encima del máximo
+            - "SIN_LIMITES": Variable sin límites definidos
+
+            - `limites_vars`: Diccionario con los límites válidos de TODAS las variables, extraídas del catálogo. 
+            ❗NO DEFINAS OTRO DICCIONARIO DE LÍMITES.
+            ✅ Usá exclusivamente `limites_vars`.
+
+            INSTRUCCIONES CRÍTICAS:
             1. Las variables binarias usan 0/1 (ya convertidos a numéricos)
-            2. Siempre filtra primero por VarName relevante usando df[df['VarName'] == 'NOMBRE_VARIABLE']
-            3. Para series temporales con resample, USA SOLO COLUMNAS NUMÉRICAS:
-            - df_filtrado = df[df['VarName'] == 'variable'].copy()
-            - df_filtrado = df_filtrado[['TimeString', 'VarValue']].set_index('TimeString')
-            - resultado = df_filtrado.resample('h').mean()  # Usa 'h' no 'H'
-            4. Si hay valores faltantes, usa .dropna() antes de operaciones
-            5. Verifica que las variables existan antes de usarlas
-            6. Para análisis temporal, ordena por TimeString primero
-            7. NUNCA hagas resample() sobre DataFrames que contengan columnas de texto
-            8. Siempre selecciona solo las columnas numéricas antes del resample
+            2. Para encontrar variables relevantes, usá `.str.contains()`, por ejemplo:
+            ```python
+            df[df['VarName'].str.contains("RPM", case=False, na=False)]
 
-            🚫 IMPORTANTE: El DataFrame `df` ya está cargado y contiene los datos reales. NO lo crees ni lo reemplaces. No simules datos. Usa directamente el `df` que ya existe.
+            NO compares con ==, porque los nombres no siempre coinciden exactamente.
+            3. Si hay múltiples coincidencias (ej: muchas variables con “RPM”), analizá todas.
+            4. Para series temporales:
+            df_filtrado = df_filtrado[['TimeString', 'VarValue']].set_index('TimeString')
+            resultado = df_filtrado.resample('h').mean()
 
-            Pregunta a responder:
+            5. SIEMPRE validá los valores con validar_valor().
+
+            6. Explicá qué significa cada variable según su descripción en el catálogo.
+
+            7. Para variables binarias, interpretá 0 = apagado, 1 = activado.
+
+            8. NO crees ni simules el DataFrame. Ya está cargado como df.
+
+            FORMATO DE RESPUESTA ESPERADO:
+
+            - Descripción de la variable(s) encontrada(s)
+
+            - Valor(es) máximo(s), promedio(s), etc.
+
+            - Validación con validar_valor() (normal / alerta / fuera de rango)
+
+            - Análisis temporal si corresponde
+
+            - Conclusiones claras y útiles
+
+            ⚠️ MUY IMPORTANTE:
+            - ❌ NO DEFINAS ni simules el DataFrame `df` ni los diccionarios `limites_vars` o la función `validar_valor`.
+            - ✅ Todos estos objetos ya están cargados y disponibles.
+            - Cualquier intento de definir `df = pd.DataFrame(...)` es un ERROR.
+
+
+            📌 Pregunta a responder:
             "{pregunta}"
 
-            Genera SOLO código Python válido que:
-            1. Comience con 'import pandas as pd' e 'import numpy as np'
-            2. Contenga manejo de tipos de datos seguro
-            3. Incluya filtrado por variables relevantes
-            4. Verifique que las variables existan
-            5. Finalice con print(resultado)
+            🔧 Generá código Python que:
+
+            - Filtre variables relevantes con .str.contains()
+
+            - Analice sus valores
+
+            - Valide con validar_valor()
+
+            - Imprima resultados interpretados
             """
             
-            # 6. Generar y ejecutar el código
+            # 8. Generar y ejecutar el código
             response = self.model.generate_content(prompt)
             codigo_raw = response.text.strip()
             
@@ -233,9 +315,16 @@ class LocomotoraBot:
 
             print(f"🔍 DEBUG - Código generado:\n{codigo}")
 
-            # 7. Ejecutar con validación
-            import numpy as np
-            local_vars = {"df": df.copy(), "pd": pd, "np": np}
+            # 9. Ejecutar con validación y funciones auxiliares
+            local_vars = {
+                "df": df.copy(), 
+                "pd": pd, 
+                "np": np,
+                "limites_vars": limites_vars,
+                "validar_valor": validar_valor,
+                "catalogo_vars": catalogo_vars
+            }
+            
             buffer = io.StringIO()
             
             try:
@@ -248,14 +337,25 @@ class LocomotoraBot:
                 if "agg function failed" in str(e):
                     error_msg += "💡 SOLUCIÓN: Revisa que todas las columnas usadas en operaciones numéricas sean de tipo float/int"
                 elif "KeyError" in str(e):
-                    error_msg += "💡 SOLUCIÓN: Verifica que los nombres de variables sean exactos"
+                    error_msg += "💡 SOLUCIÓN: Verifica que los nombres de variables sean exactos (case-sensitive)"
                 elif "empty" in str(e).lower():
-                    error_msg += "💡 SOLUCIÓN: Es posible que el filtro no encuentre datos"
+                    error_msg += "💡 SOLUCIÓN: Es posible que el filtro no encuentre datos. Verifica nombres de variables."
+                
+                # Mostrar variables disponibles para debugging
+                variables_disponibles = df['VarName'].unique()[:10]
+                error_msg += f"\n🔍 Variables disponibles en el DataFrame: {variables_disponibles}"
                     
                 return error_msg
 
             resultado = buffer.getvalue().strip()
-            return resultado if resultado else "✅ Análisis completado (sin output)"
+            
+            # 10. Agregar contexto adicional si la respuesta es muy corta
+            if resultado and len(resultado) < 100:
+                resultado += f"\n\n📊 Análisis para locomotora {locomotora_seleccionada}"
+                resultado += f"\n🔍 Variables disponibles en catálogo: {len(catalogo_vars)}"
+                resultado += f"\n⚙️ Variables con límites definidos: {len(limites_vars)}"
+            
+            return resultado if resultado else "✅ Análisis completado (sin output visible)"
 
         except Exception as e:
             return f"❌ Error general: {type(e).__name__}: {str(e)}"
