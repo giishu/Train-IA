@@ -222,7 +222,6 @@ def ver_historial():
     finally:
         conn.close()
 
-
 def consultar_ia(df, bot):
     pregunta = input("\n📤 Ingresá tu pregunta para la IA (ej. '¿Cuál es el promedio de temperatura?'):\n> ")
     usar_codigo = input("¿Querés que la IA genere y ejecute código? (s/n): ").lower().strip() == "s"
