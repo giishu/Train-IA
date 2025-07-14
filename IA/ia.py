@@ -3,18 +3,23 @@ import google.generativeai as genai
 import pandas as pd
 import io
 import contextlib
-from IA.datos import cargar_csv, seleccionar_archivo, registrar_consulta
+from IA.datos import cargar_csv
 from typing import Optional
 import random
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from functools import lru_cache
-import json
-import html
 import numpy as np
 from typing import Dict, Any, Optional, Tuple
-
-
+from sklearn.ensemble import IsolationForest, RandomForestRegressor, RandomForestClassifier
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, mean_squared_error, r2_score
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+import pickle
+import warnings
+warnings.filterwarnings('ignore')
 
 # Configuración (usa variable de entorno en producción!)
 genai.configure(api_key='AIzaSyA2PipvauvVPmrGQz-Hn7nhu_VcWHypeEo')
@@ -95,8 +100,8 @@ class LocomotoraBot:
         catalogo_vars = {}
         limites_vars = {}
         
-        print(f"🔍 Procesando {len(df_catalogo)} filas del catálogo para {locomotora}")
-        print(f"🔍 Columnas a usar: {cols}")
+        variables_procesadas = 0
+        variables_con_limites = 0
         
         for idx, row in df_catalogo.iterrows():
             if pd.notna(row.get('Variable')) and str(row['Variable']).strip():
@@ -110,14 +115,14 @@ class LocomotoraBot:
                     descripcion=str(row.get('Detalle', '')).strip() if pd.notna(row.get('Detalle', '')) else ''
                 )
                 
-                # Procesar límites usando la nueva función
+                # Procesar límites usando la función existente
                 try:
                     # Obtener valores de límites
                     min_raw = row.get(cols['min'])
                     max_raw = row.get(cols['max'])
                     alerta_raw = row.get(cols['alerta'])
                     
-                    # Convertir usando la nueva función
+                    # Convertir usando la función existente
                     min_val = self._convertir_valor_limite(min_raw)
                     max_val = self._convertir_valor_limite(max_raw)
                     alerta_val = self._convertir_valor_limite(alerta_raw)
@@ -130,20 +135,19 @@ class LocomotoraBot:
                     if alerta_val is not None:
                         info.alerta = alerta_val
                     
-                    # Debug específico para RPM medidas
-                    if "RPM" in var_name.upper():
+                    # Solo debug para variables específicas si es necesario
+                    if "RPM" in var_name.upper() and False:  # Cambiar a True si necesitas debug
                         print(f"🔍 DEBUG RPM: {var_name}")
-                        print(f"   Min raw: {min_raw} -> {min_val}")
-                        print(f"   Max raw: {max_raw} -> {max_val}")
-                        print(f"   Alerta raw: {alerta_raw} -> {alerta_val}")
+                        print(f"   Min: {min_val}, Max: {max_val}, Alerta: {alerta_val}")
                         
                 except Exception as e:
                     print(f"⚠️  Error procesando límites para {var_name}: {e}")
                     continue
                 
                 catalogo_vars[var_name] = info
+                variables_procesadas += 1
                 
-                # Guardar límites para validación rápida (usar múltiples claves)
+                # Guardar límites para validación rápida (solo si tiene min y max)
                 if min_val is not None and max_val is not None:
                     limite_dict = {
                         'min': min_val,
@@ -156,9 +160,7 @@ class LocomotoraBot:
                     # Guardar con nombre en mayúsculas (compatibilidad)
                     limites_vars[var_name.upper()] = limite_dict
                     
-                    print(f"✅ Límites guardados para '{var_name}': min={min_val}, max={max_val}")
-        
-        print(f"🔍 Total variables con límites: {len(limites_vars)//2}")  # Dividir por 2 porque cada variable se guarda 2 veces
+                    variables_con_limites += 1
         
         return catalogo_vars, limites_vars
     
@@ -558,6 +560,510 @@ def mostrar_grafico_si_aplica(df: pd.DataFrame):
     except Exception as e:
         print(f"⚠️ No se pudo graficar: {e}")
 
+class LocomotoraMLBot:
+    def __init__(self, locomotora_bot: LocomotoraBot):
+        self.bot = locomotora_bot
+        self.modelos_entrenados = {}
+        self.scalers = {}
+        self.encoders = {}
+        
+    def preparar_datos_ml(self, df: pd.DataFrame, ventana_temporal: int = 10) -> pd.DataFrame:
+        """
+        Prepara los datos para machine learning creando características temporales
+        """
+        df_ml = df.copy()
+        df_ml['TimeString'] = pd.to_datetime(df_ml['TimeString'])
+        df_ml = df_ml.sort_values(['VarName', 'TimeString'])
+        
+        # Crear características por variable
+        features_list = []
+        
+        for var_name in df_ml['VarName'].unique():
+            var_data = df_ml[df_ml['VarName'] == var_name].copy()
+            
+            if len(var_data) < ventana_temporal:
+                continue
+                
+            # Características estadísticas en ventana móvil
+            var_data['rolling_mean'] = var_data['VarValue'].rolling(window=ventana_temporal).mean()
+            var_data['rolling_std'] = var_data['VarValue'].rolling(window=ventana_temporal).std()
+            var_data['rolling_min'] = var_data['VarValue'].rolling(window=ventana_temporal).min()
+            var_data['rolling_max'] = var_data['VarValue'].rolling(window=ventana_temporal).max()
+            
+            # Características de tendencia
+            var_data['diff_1'] = var_data['VarValue'].diff()
+            var_data['diff_2'] = var_data['VarValue'].diff().diff()
+            var_data['pct_change'] = var_data['VarValue'].pct_change()
+            
+            # Características temporales
+            var_data['hour'] = var_data['TimeString'].dt.hour
+            var_data['day_of_week'] = var_data['TimeString'].dt.dayofweek
+            var_data['month'] = var_data['TimeString'].dt.month
+            
+            # Identificar anomalías usando límites del catálogo
+            _, limites_vars = self.bot._procesar_limites_locomotora("ALCO")
+            
+            if var_name in limites_vars:
+                limite = limites_vars[var_name]
+                var_data['anomalia'] = (
+                    (var_data['VarValue'] < limite['min']) | 
+                    (var_data['VarValue'] > limite['max'])
+                ).astype(int)
+            else:
+                var_data['anomalia'] = 0
+                
+            features_list.append(var_data)
+        
+        if features_list:
+            df_features = pd.concat(features_list, ignore_index=True)
+            df_features = df_features.dropna()
+            return df_features
+        else:
+            return pd.DataFrame()
+    
+    def detectar_anomalias_ml(self, df: pd.DataFrame, variable_objetivo: str = None) -> dict:
+        """
+        Detecta anomalías usando Isolation Forest
+        """
+        try:
+            df_ml = self.preparar_datos_ml(df)
+            
+            if df_ml.empty:
+                return {"error": "No hay suficientes datos para ML"}
+            
+            # Filtrar por variable si se especifica
+            if variable_objetivo:
+                df_ml = df_ml[df_ml['VarName'] == variable_objetivo]
+                
+            if len(df_ml) < 50:
+                return {"error": "Datos insuficientes para detección de anomalías"}
+            
+            # Preparar características numéricas
+            feature_cols = ['VarValue', 'rolling_mean', 'rolling_std', 'rolling_min', 
+                          'rolling_max', 'diff_1', 'diff_2', 'pct_change', 'hour', 
+                          'day_of_week', 'month']
+            
+            X = df_ml[feature_cols].fillna(0)
+            
+            # Escalar datos
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+            
+            # Entrenar Isolation Forest
+            iso_forest = IsolationForest(contamination=0.1, random_state=42)
+            anomalias_pred = iso_forest.fit_predict(X_scaled)
+            
+            # Agregar predicciones al DataFrame
+            df_ml['anomalia_ml'] = (anomalias_pred == -1).astype(int)
+            
+            # Estadísticas
+            total_anomalias = sum(anomalias_pred == -1)
+            porcentaje_anomalias = (total_anomalias / len(df_ml)) * 100
+            
+            # Anomalías más críticas (con mayor desviación)
+            scores = iso_forest.decision_function(X_scaled)
+            df_ml['anomalia_score'] = scores
+            
+            anomalias_criticas = df_ml[df_ml['anomalia_ml'] == 1].nsmallest(10, 'anomalia_score')
+            
+            resultado = {
+                "total_registros": len(df_ml),
+                "total_anomalias": total_anomalias,
+                "porcentaje_anomalias": round(porcentaje_anomalias, 2),
+                "anomalias_criticas": anomalias_criticas[['VarName', 'VarValue', 'TimeString', 'anomalia_score']].to_dict('records'),
+                "variables_afectadas": df_ml[df_ml['anomalia_ml'] == 1]['VarName'].value_counts().to_dict()
+            }
+            
+            return resultado
+            
+        except Exception as e:
+            return {"error": f"Error en detección de anomalías: {str(e)}"}
+    
+    def predecir_fallos(self, df: pd.DataFrame, variable_objetivo: str, 
+                       horas_adelante: int = 24) -> dict:
+        """
+        Predice posibles fallos usando Random Forest
+        """
+        try:
+            df_ml = self.preparar_datos_ml(df)
+            
+            if df_ml.empty:
+                return {"error": "No hay suficientes datos para predicción"}
+            
+            # Filtrar por variable objetivo
+            df_var = df_ml[df_ml['VarName'] == variable_objetivo].copy()
+            
+            if len(df_var) < 100:
+                return {"error": "Datos insuficientes para predicción"}
+            
+            # Crear variable objetivo (fallo en las próximas horas)
+            df_var = df_var.sort_values('TimeString')
+            df_var['fallo_futuro'] = df_var['anomalia'].shift(-horas_adelante).fillna(0)
+            
+            # Características para el modelo
+            feature_cols = ['VarValue', 'rolling_mean', 'rolling_std', 'rolling_min', 
+                          'rolling_max', 'diff_1', 'diff_2', 'pct_change', 'hour', 
+                          'day_of_week', 'month']
+            
+            X = df_var[feature_cols].fillna(0)
+            y = df_var['fallo_futuro']
+            
+            # Dividir datos
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y, test_size=0.2, random_state=42, stratify=y
+            )
+            
+            # Entrenar modelo
+            rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
+            rf_model.fit(X_train, y_train)
+            
+            # Predicciones
+            y_pred = rf_model.predict(X_test)
+            
+            # Importancia de características
+            importances = pd.DataFrame({
+                'feature': feature_cols,
+                'importance': rf_model.feature_importances_
+            }).sort_values('importance', ascending=False)
+            
+            # Predicción para los datos más recientes
+            datos_recientes = X.tail(10)
+            prediccion_reciente = rf_model.predict_proba(datos_recientes)[:, 1]
+            
+            # Guardar modelo
+            self.modelos_entrenados[f"fallo_{variable_objetivo}"] = rf_model
+            
+            resultado = {
+                "variable": variable_objetivo,
+                "precision_test": rf_model.score(X_test, y_test),
+                "importancia_features": importances.head(5).to_dict('records'),
+                "prediccion_reciente": {
+                    "probabilidad_fallo": float(prediccion_reciente.max()),
+                    "riesgo": "ALTO" if prediccion_reciente.max() > 0.7 else "MEDIO" if prediccion_reciente.max() > 0.3 else "BAJO"
+                },
+                "reporte_clasificacion": classification_report(y_test, y_pred, output_dict=True)
+            }
+            
+            return resultado
+            
+        except Exception as e:
+            return {"error": f"Error en predicción de fallos: {str(e)}"}
+    
+    def analizar_patrones_operacion(self, df: pd.DataFrame, n_clusters: int = 5) -> dict:
+        """
+        Analiza patrones de operación usando clustering
+        """
+        try:
+            df_ml = self.preparar_datos_ml(df)
+            
+            if df_ml.empty:
+                return {"error": "No hay suficientes datos para análisis de patrones"}
+            
+            # Crear matriz de características por variable
+            pivot_data = df_ml.pivot_table(
+                index='TimeString', 
+                columns='VarName', 
+                values='VarValue', 
+                aggfunc='mean'
+            ).fillna(0)
+            
+            if pivot_data.empty:
+                return {"error": "No se pueden crear patrones con los datos disponibles"}
+            
+            # Reducir dimensionalidad si hay muchas variables
+            if pivot_data.shape[1] > 20:
+                pca = PCA(n_components=10)
+                pivot_data_pca = pca.fit_transform(pivot_data)
+                feature_names = [f"PC{i+1}" for i in range(10)]
+            else:
+                pivot_data_pca = pivot_data.values
+                feature_names = pivot_data.columns.tolist()
+            
+            # Escalar datos
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(pivot_data_pca)
+            
+            # Clustering
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+            clusters = kmeans.fit_predict(X_scaled)
+            
+            # Analizar clusters
+            cluster_analysis = []
+            for i in range(n_clusters):
+                cluster_mask = clusters == i
+                cluster_data = pivot_data_pca[cluster_mask]
+                
+                if len(cluster_data) > 0:
+                    cluster_info = {
+                        "cluster": i,
+                        "size": int(cluster_mask.sum()),
+                        "porcentaje": round((cluster_mask.sum() / len(clusters)) * 100, 2),
+                        "caracteristicas_promedio": cluster_data.mean(axis=0).tolist()[:5]  # Solo primeras 5
+                    }
+                    cluster_analysis.append(cluster_info)
+            
+            # Identificar cluster actual (últimos datos)
+            ultimo_cluster = clusters[-1] if len(clusters) > 0 else 0
+            
+            resultado = {
+                "total_patrones": n_clusters,
+                "cluster_actual": int(ultimo_cluster),
+                "analisis_clusters": cluster_analysis,
+                "distribucion_temporal": pd.Series(clusters).value_counts().to_dict(),
+                "recomendacion": self._interpretar_cluster(ultimo_cluster, cluster_analysis)
+            }
+            
+            return resultado
+            
+        except Exception as e:
+            return {"error": f"Error en análisis de patrones: {str(e)}"}
+    
+    def _interpretar_cluster(self, cluster_id: int, cluster_analysis: list) -> str:
+        """
+        Interpreta el significado del cluster actual
+        """
+        if not cluster_analysis:
+            return "No se pueden interpretar los patrones"
+        
+        cluster_info = next((c for c in cluster_analysis if c["cluster"] == cluster_id), None)
+        
+        if not cluster_info:
+            return "Cluster no encontrado"
+        
+        size = cluster_info["size"]
+        porcentaje = cluster_info["porcentaje"]
+        
+        if porcentaje > 40:
+            return f"Operación NORMAL - Patrón común ({porcentaje}% del tiempo)"
+        elif porcentaje > 20:
+            return f"Operación TÍPICA - Patrón frecuente ({porcentaje}% del tiempo)"
+        elif porcentaje > 10:
+            return f"Operación ESPECÍFICA - Patrón ocasional ({porcentaje}% del tiempo)"
+        else:
+            return f"Operación ATÍPICA - Patrón raro ({porcentaje}% del tiempo) - Requiere atención"
+    
+    def generar_reporte_ml(self, df: pd.DataFrame, variables_clave: list = None) -> str:
+        """
+        Genera un reporte completo de machine learning
+        """
+        try:
+            print("🤖 Generando reporte de Machine Learning...")
+            
+            # 1. Detección de anomalías general
+            anomalias_result = self.detectar_anomalias_ml(df)
+            
+            # 2. Análisis de patrones
+            patrones_result = self.analizar_patrones_operacion(df)
+            
+            # 3. Predicción de fallos para variables clave
+            predicciones = {}
+            if variables_clave:
+                for var in variables_clave:
+                    pred_result = self.predecir_fallos(df, var)
+                    if "error" not in pred_result:
+                        predicciones[var] = pred_result
+            
+            # Construir reporte
+            reporte = "🤖 REPORTE DE MACHINE LEARNING\n"
+            reporte += "=" * 50 + "\n\n"
+            
+            # Anomalías
+            if "error" not in anomalias_result:
+                reporte += "🔍 DETECCIÓN DE ANOMALÍAS\n"
+                reporte += f"• Total registros analizados: {anomalias_result['total_registros']}\n"
+                reporte += f"• Anomalías detectadas: {anomalias_result['total_anomalias']} ({anomalias_result['porcentaje_anomalias']}%)\n"
+                reporte += f"• Variables más afectadas: {list(anomalias_result['variables_afectadas'].keys())[:3]}\n\n"
+            
+            # Patrones
+            if "error" not in patrones_result:
+                reporte += "📊 ANÁLISIS DE PATRONES\n"
+                reporte += f"• Patrón operacional actual: Cluster {patrones_result['cluster_actual']}\n"
+                reporte += f"• Interpretación: {patrones_result['recomendacion']}\n"
+                reporte += f"• Patrones identificados: {patrones_result['total_patrones']}\n\n"
+            
+            # Predicciones
+            if predicciones:
+                reporte += "🔮 PREDICCIONES DE FALLOS\n"
+                for var, pred in predicciones.items():
+                    reporte += f"• {var}:\n"
+                    reporte += f"  - Riesgo: {pred['prediccion_reciente']['riesgo']}\n"
+                    reporte += f"  - Probabilidad: {pred['prediccion_reciente']['probabilidad_fallo']:.1%}\n"
+                    reporte += f"  - Precisión modelo: {pred['precision_test']:.1%}\n"
+                reporte += "\n"
+            
+            # Recomendaciones
+            reporte += "💡 RECOMENDACIONES\n"
+            if "error" not in anomalias_result and anomalias_result['porcentaje_anomalias'] > 15:
+                reporte += "• ⚠️ Alto nivel de anomalías detectadas - Revisar sistemas\n"
+            
+            if predicciones:
+                for var, pred in predicciones.items():
+                    if pred['prediccion_reciente']['riesgo'] == "ALTO":
+                        reporte += f"• 🚨 Atención inmediata requerida en {var}\n"
+            
+            if "error" not in patrones_result and "ATÍPICA" in patrones_result['recomendacion']:
+                reporte += "• 🔍 Operación atípica detectada - Monitorear de cerca\n"
+            
+            return reporte
+            
+        except Exception as e:
+            return f"❌ Error generando reporte ML: {str(e)}"
+    
+    def guardar_modelos(self, ruta_base: str = "modelos_ml/"):
+        """
+        Guarda los modelos entrenados
+        """
+        try:
+            import os
+            os.makedirs(ruta_base, exist_ok=True)
+            
+            for nombre, modelo in self.modelos_entrenados.items():
+                ruta_archivo = os.path.join(ruta_base, f"{nombre}.pkl")
+                with open(ruta_archivo, 'wb') as f:
+                    pickle.dump(modelo, f)
+            
+            print(f"✅ Modelos guardados en {ruta_base}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error guardando modelos: {str(e)}")
+            return False
+    
+    def cargar_modelos(self, ruta_base: str = "modelos_ml/"):
+        """
+        Carga modelos previamente entrenados
+        """
+        try:
+            import os
+            
+            if not os.path.exists(ruta_base):
+                print(f"⚠️ Directorio {ruta_base} no existe")
+                return False
+            
+            for archivo in os.listdir(ruta_base):
+                if archivo.endswith('.pkl'):
+                    nombre = archivo.replace('.pkl', '')
+                    ruta_archivo = os.path.join(ruta_base, archivo)
+                    
+                    with open(ruta_archivo, 'rb') as f:
+                        modelo = pickle.load(f)
+                    
+                    self.modelos_entrenados[nombre] = modelo
+            
+            print(f"✅ Modelos cargados desde {ruta_base}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error cargando modelos: {str(e)}")
+            return False
+
+# Modificar la clase LocomotoraBot original agregando este método:
+def agregar_funcionalidad_ml_a_locomotora_bot():
+    """
+    Agrega funcionalidad ML a la clase LocomotoraBot existente
+    """
+    def inicializar_ml(self):
+        """Inicializa el bot de ML"""
+        if not hasattr(self, 'ml_bot'):
+            self.ml_bot = LocomotoraMLBot(self)
+        return self.ml_bot
+    
+    def analizar_con_ml(self, df: pd.DataFrame, tipo_analisis: str = "completo") -> str:
+        """
+        Analiza datos usando machine learning
+        
+        Args:
+            df: DataFrame con datos de sensores
+            tipo_analisis: "anomalias", "patrones", "prediccion", "completo"
+        """
+        ml_bot = self.inicializar_ml()
+        
+        if tipo_analisis == "anomalias":
+            resultado = ml_bot.detectar_anomalias_ml(df)
+            return self._formatear_resultado_ml(resultado, "Detección de Anomalías")
+        
+        elif tipo_analisis == "patrones":
+            resultado = ml_bot.analizar_patrones_operacion(df)
+            return self._formatear_resultado_ml(resultado, "Análisis de Patrones")
+        
+        elif tipo_analisis == "prediccion":
+            # Usar variables más comunes para predicción
+            variables_clave = df['VarName'].value_counts().head(3).index.tolist()
+            resultados = {}
+            
+            for var in variables_clave:
+                resultado = ml_bot.predecir_fallos(df, var)
+                if "error" not in resultado:
+                    resultados[var] = resultado
+            
+            return self._formatear_predicciones(resultados)
+        
+        elif tipo_analisis == "completo":
+            variables_clave = df['VarName'].value_counts().head(3).index.tolist()
+            return ml_bot.generar_reporte_ml(df, variables_clave)
+        
+        else:
+            return "❌ Tipo de análisis no válido. Opciones: anomalias, patrones, prediccion, completo"
+    
+    def _formatear_resultado_ml(self, resultado: dict, titulo: str) -> str:
+        """Formatea resultados de ML para mostrar"""
+        if "error" in resultado:
+            return f"❌ {titulo}: {resultado['error']}"
+        
+        output = f"🤖 {titulo.upper()}\n"
+        output += "=" * 40 + "\n"
+        
+        for key, value in resultado.items():
+            if isinstance(value, (int, float)):
+                output += f"• {key}: {value}\n"
+            elif isinstance(value, str):
+                output += f"• {key}: {value}\n"
+            elif isinstance(value, list) and len(value) > 0:
+                output += f"• {key}: {len(value)} items\n"
+        
+        return output
+    
+    def _formatear_predicciones(self, predicciones: dict) -> str:
+        """Formatea predicciones para mostrar"""
+        if not predicciones:
+            return "❌ No se pudieron generar predicciones"
+        
+        output = "🔮 PREDICCIONES DE FALLOS\n"
+        output += "=" * 40 + "\n"
+        
+        for var, pred in predicciones.items():
+            output += f"\n📊 {var}:\n"
+            output += f"• Riesgo: {pred['prediccion_reciente']['riesgo']}\n"
+            output += f"• Probabilidad: {pred['prediccion_reciente']['probabilidad_fallo']:.1%}\n"
+            output += f"• Precisión: {pred['precision_test']:.1%}\n"
+        
+        return output
+    
+    # Agregar métodos a la clase LocomotoraBot
+    LocomotoraBot.inicializar_ml = inicializar_ml
+    LocomotoraBot.analizar_con_ml = analizar_con_ml
+    LocomotoraBot._formatear_resultado_ml = _formatear_resultado_ml
+    LocomotoraBot._formatear_predicciones = _formatear_predicciones
+
+# Ejecutar la extensión
+agregar_funcionalidad_ml_a_locomotora_bot()
+
+# Función de conveniencia para usar ML directamente
+def analizar_locomotora_ml(df: pd.DataFrame, locomotora_bot: LocomotoraBot, 
+                          tipo_analisis: str = "completo") -> str:
+    """
+    Función de conveniencia para análisis ML
+    
+    Args:
+        df: DataFrame con datos de sensores
+        locomotora_bot: Instancia de LocomotoraBot
+        tipo_analisis: "anomalias", "patrones", "prediccion", "completo"
+    
+    Returns:
+        Resultado del análisis ML
+    """
+    return locomotora_bot.analizar_con_ml(df, tipo_analisis)
+
 modelo = genai.GenerativeModel('gemini-1.5-flash')
 bot=LocomotoraBot(modelo)
 
@@ -568,5 +1074,3 @@ def consultar_bot(pregunta: str, df: Optional[pd.DataFrame] = None, ruta_csv: Op
         df = cargar_csv(ruta_csv)
    
     return bot.generar_respuesta(pregunta, df)
-
-

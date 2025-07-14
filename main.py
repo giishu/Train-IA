@@ -1,6 +1,8 @@
 from IA.datos import cargar_csv, seleccionar_archivo, registrar_consulta  
 from IA.analisis import detectar_cambios_porcentuales
 from IA.ia import consultar_bot
+from IA.ia import LocomotoraBot
+from IA.ia import analizar_locomotora_ml
 import pandas as pd
 import sqlite3
 import tkinter as tk
@@ -225,11 +227,17 @@ def ver_historial():
 def consultar_ia(df, bot):
     pregunta = input("\n📤 Ingresá tu pregunta para la IA (ej. '¿Cuál es el promedio de temperatura?'):\n> ")
     usar_codigo = input("¿Querés que la IA genere y ejecute código? (s/n): ").lower().strip() == "s"
+    
     if usar_codigo:
-         respuesta = bot.analisis_con_codigo_sin_ver_df(pregunta, df, locomotora_seleccionada)
+        respuesta = bot.analisis_con_codigo_sin_ver_df(pregunta, df, locomotora_seleccionada)
     else:
-          respuesta = consultar_bot(pregunta, df)
+        respuesta = consultar_bot(pregunta, df)
+    
+    # Ejecutar ML siempre, independientemente de la opción anterior
+    resultado_ml = bot.analizar_con_ml(df, "completo")
+    
     print("\n🧠 Respuesta IA:\n", respuesta)
+    print("\n🤖 Machine Learning:\n", resultado_ml)
 
 
 def main():
