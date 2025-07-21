@@ -1,4 +1,3 @@
-# llave = 'AIzaSyA2PipvauvVPmrGQz-Hn7nhu_VcWHypeEo'
 import google.generativeai as genai
 import pandas as pd
 import io
@@ -88,7 +87,6 @@ class LocomotoraBot:
             print(f"⚠️  Error procesando valor simple '{valor_str}': {e}")
             return None
 
-    # Reemplaza la parte del procesamiento de límites en _procesar_limites_locomotora():
     def _procesar_limites_locomotora(self, locomotora: str) -> Tuple[Dict[str, VariableInfo], Dict[str, Dict[str, float]]]:
         """Procesa los límites y información para un tipo de locomotora específico"""
         if locomotora not in self.columnas_por_tipo:
@@ -155,10 +153,9 @@ class LocomotoraBot:
                         'alerta': alerta_val
                     }
                     
-                    # Guardar con nombre exacto
+                    # Guardar con nombre exacto y normalizado
                     limites_vars[var_name] = limite_dict
-                    # Guardar con nombre en mayúsculas (compatibilidad)
-                    limites_vars[var_name.upper()] = limite_dict
+                    limites_vars[var_name.upper().strip()] = limite_dict
                     
                     variables_con_limites += 1
         
@@ -166,10 +163,8 @@ class LocomotoraBot:
     
     def _validar_valor(self, variable: str, valor: float, limites: Dict[str, Dict[str, float]]) -> str:
         """Valida si un valor está dentro de los límites esperados"""
-        # Buscar por nombre exacto primero
         if variable in limites:
             lim = limites[variable]
-        # Luego buscar por nombre en mayúsculas (compatibilidad)
         elif variable.upper() in limites:
             lim = limites[variable.upper()]
         else:
@@ -682,7 +677,7 @@ class LocomotoraMLBot:
     def predecir_fallos(self, df: pd.DataFrame, variable_objetivo: str, 
                        horas_adelante: int = 24) -> dict:
         """
-        Predice posibles fallos usando Random Forest
+        Predice posibles fallos usando Random Forest y proporciona explicaciones detalladas
         """
         try:
             df_ml = self.preparar_datos_ml(df)
@@ -733,6 +728,48 @@ class LocomotoraMLBot:
             # Guardar modelo
             self.modelos_entrenados[f"fallo_{variable_objetivo}"] = rf_model
             
+            # Generar explicaciones usando Gemini
+            _, limites_vars = self.bot._procesar_limites_locomotora("ALCO")
+            limites_info = limites_vars.get(variable_objetivo, {'min': 'N/A', 'max': 'N/A', 'alerta': 'N/A'})
+            
+            # Preparar contexto para Gemini
+            contexto = f"""
+Datos recientes de la variable '{variable_objetivo}':
+- Últimos 10 valores: {datos_recientes['VarValue'].tolist()}
+- Media móvil: {datos_recientes['rolling_mean'].tolist()}
+- Desviación estándar móvil: {datos_recientes['rolling_std'].tolist()}
+- Cambios porcentuales: {datos_recientes['pct_change'].tolist()}
+- Límites catálogo: min={limites_info['min']}, max={limites_info['max']}, alerta={limites_info['alerta']}
+Características más importantes del modelo:
+{importances.head(3).to_string(index=False)}
+Probabilidad de fallo predicha: {prediccion_reciente.max():.2%}
+Riesgo asignado: {'ALTO' if prediccion_reciente.max() > 0.7 else 'MEDIO' if prediccion_reciente.max() > 0.3 else 'BAJO'}
+Precisión del modelo: {rf_model.score(X_test, y_test):.2%}
+Reporte de clasificación:
+{classification_report(y_test, y_pred, output_dict=True)}
+"""
+
+            prompt_explicacion = f"""
+Eres un experto en mantenimiento de locomotoras y análisis de datos. Explica detalladamente por qué se obtuvieron los siguientes resultados en la predicción de fallos para la variable '{variable_objetivo}':
+
+Contexto:
+{contexto}
+
+Proporciona una explicación clara y técnica para cada métrica:
+1. **Probabilidad de fallo ({prediccion_reciente.max():.2%})**: ¿Por qué el modelo asigna esta probabilidad? Considera las características más importantes y los valores recientes.
+2. **Riesgo de fallo ({'ALTO' if prediccion_reciente.max() > 0.7 else 'MEDIO' if prediccion_reciente.max() > 0.3 else 'BAJO'})**: ¿Por qué se clasifica en este nivel de riesgo? Explica los umbrales y el contexto.
+3. **Precisión del modelo ({rf_model.score(X_test, y_test):.2%})**: ¿Qué significa esta precisión? ¿Es confiable? Considera el reporte de clasificación y el tamaño del conjunto de datos ({len(X_test)} registros en prueba).
+
+Usa un tono técnico pero accesible, como si explicaras a un ingeniero de mantenimiento. Sé conciso y enfócate en los factores clave que influyen en cada métrica.
+"""
+
+            # Generar explicaciones con Gemini
+            try:
+                response = self.bot.model.generate_content(prompt_explicacion)
+                explicaciones = response.text
+            except Exception as e:
+                explicaciones = f"⚠️ Error al generar explicaciones: {str(e)}"
+
             resultado = {
                 "variable": variable_objetivo,
                 "precision_test": rf_model.score(X_test, y_test),
@@ -741,7 +778,12 @@ class LocomotoraMLBot:
                     "probabilidad_fallo": float(prediccion_reciente.max()),
                     "riesgo": "ALTO" if prediccion_reciente.max() > 0.7 else "MEDIO" if prediccion_reciente.max() > 0.3 else "BAJO"
                 },
-                "reporte_clasificacion": classification_report(y_test, y_pred, output_dict=True)
+                "reporte_clasificacion": classification_report(y_test, y_pred, output_dict=True),
+                "explicaciones": {
+                    "probabilidad_fallo": explicaciones.split("2.")[0].strip() if "2." in explicaciones else explicaciones,
+                    "riesgo": explicaciones.split("2.")[1].split("3.")[0].strip() if "3." in explicaciones else "",
+                    "precision_modelo": explicaciones.split("3.")[1].strip() if "3." in explicaciones else ""
+                }
             }
             
             return resultado
@@ -889,6 +931,10 @@ class LocomotoraMLBot:
                     reporte += f"  - Riesgo: {pred['prediccion_reciente']['riesgo']}\n"
                     reporte += f"  - Probabilidad: {pred['prediccion_reciente']['probabilidad_fallo']:.1%}\n"
                     reporte += f"  - Precisión modelo: {pred['precision_test']:.1%}\n"
+                    reporte += f"  - Explicaciones:\n"
+                    reporte += f"    · Probabilidad de fallo: {pred['explicaciones']['probabilidad_fallo']}\n"
+                    reporte += f"    · Riesgo: {pred['explicaciones']['riesgo']}\n"
+                    reporte += f"    · Precisión del modelo: {pred['explicaciones']['precision_modelo']}\n"
                 reporte += "\n"
             
             # Recomendaciones
@@ -1036,6 +1082,10 @@ def agregar_funcionalidad_ml_a_locomotora_bot():
             output += f"• Riesgo: {pred['prediccion_reciente']['riesgo']}\n"
             output += f"• Probabilidad: {pred['prediccion_reciente']['probabilidad_fallo']:.1%}\n"
             output += f"• Precisión: {pred['precision_test']:.1%}\n"
+            output += f"• Explicaciones:\n"
+            output += f"  - Probabilidad de fallo: {pred['explicaciones']['probabilidad_fallo']}\n"
+            output += f"  - Riesgo: {pred['explicaciones']['riesgo']}\n"
+            output += f"  - Precisión del modelo: {pred['explicaciones']['precision_modelo']}\n"
         
         return output
     
@@ -1065,12 +1115,11 @@ def analizar_locomotora_ml(df: pd.DataFrame, locomotora_bot: LocomotoraBot,
     return locomotora_bot.analizar_con_ml(df, tipo_analisis)
 
 modelo = genai.GenerativeModel('gemini-1.5-flash')
-bot=LocomotoraBot(modelo)
+bot = LocomotoraBot(modelo)
 
-
-# Interfaz mejoradarun
+# Interfaz mejorada
 def consultar_bot(pregunta: str, df: Optional[pd.DataFrame] = None, ruta_csv: Optional[str] = None) -> str:
     if df is None and ruta_csv:
         df = cargar_csv(ruta_csv)
    
-    return bot.generar_respuesta(pregunta, df)
+    return bot.analisis_con_codigo_sin_ver_df(pregunta, df)
