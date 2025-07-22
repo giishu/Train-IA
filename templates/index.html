@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análisis de Locomotoras</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            border-bottom: 3px solid #007bff;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 30px;
+            border-left: 4px solid #007bff;
+            padding-left: 15px;
+        }
+        form {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        label {
+            display: block;
+            margin: 10px 0 5px 0;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], input[type="file"], select {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background-color: #cce7ff;
+            border: 1px solid #99d3ff;
+            color: #004085;
+        }
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #007bff;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .loading {
+            display: none;
+            color: #007bff;
+            font-style: italic;
+        }
+        #myChart {
+            max-width: 800px;
+            margin: 20px auto;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <h1>🚂 Análisis de Locomotoras</h1>
+
+        <!-- Mensajes de estado -->
+        {% if mensaje %}
+        <div class="status {{ tipo_mensaje or 'info' }}">
+            {{ mensaje }}
+        </div>
+        {% endif %}
+
+        <!-- Selección de locomotora -->
+        <h2>1️⃣ Seleccionar Tipo de Locomotora</h2>
+        <form method="POST" action="{{ url_for('index') }}">
+            <label for="locomotora">Tipo de Locomotora:</label>
+            <select name="locomotora" id="locomotora" required>
+                <option value="">-- Selecciona una locomotora --</option>
+                <option value="ALCO" {% if locomotora_seleccionada == 'ALCO' %}selected{% endif %}>ALCO</option>
+                <option value="GAIA" {% if locomotora_seleccionada == 'GAIA' %}selected{% endif %}>GAIA</option>
+                <option value="GR12" {% if locomotora_seleccionada == 'GR12' %}selected{% endif %}>GR12</option>
+                <option value="GT22" {% if locomotora_seleccionada == 'GT22' %}selected{% endif %}>GT22</option>
+            </select>
+            <button type="submit" name="action" value="seleccionar_locomotora">Seleccionar Locomotora</button>
+        </form>
+
+        {% if locomotora_seleccionada %}
+        <div class="status success">
+            ✅ Locomotora seleccionada: <strong>{{ locomotora_seleccionada }}</strong>
+        </div>
+        {% endif %}
+
+        <!-- Carga de archivos -->
+        {% if locomotora_seleccionada %}
+        <h2>2️⃣ Cargar Datos</h2>
+        <form method="POST" action="{{ url_for('index') }}" enctype="multipart/form-data" id="uploadForm">
+            <label for="file1">Archivo CSV Principal:</label>
+            <input type="file" name="file1" id="file1" accept=".csv" required>
+            
+            <label for="file2">Archivo CSV Secundario (opcional):</label>
+            <input type="file" name="file2" id="file2" accept=".csv">
+            
+            <input type="hidden" name="locomotora" value="{{ locomotora_seleccionada }}">
+            <button type="submit" name="action" value="cargar_datos">📁 Cargar Datos</button>
+            <div class="loading" id="uploadLoading">⏳ Cargando archivos...</div>
+        </form>
+        {% endif %}
+
+        {% if archivos_cargados %}
+        <div class="status success">
+            ✅ Archivos cargados correctamente: {{ archivos_cargados }}
+        </div>
+        {% endif %}
+
+        <!-- Consulta a la IA -->
+        {% if locomotora_seleccionada and (archivos_cargados or datos_disponibles) %}
+        <h2>3️⃣ Consulta a la IA</h2>
+        <form method="POST" action="{{ url_for('index') }}" id="consultaForm">
+            <label for="pregunta">Pregunta sobre la locomotora {{ locomotora_seleccionada }}:</label>
+            <input type="text" name="pregunta" id="pregunta" 
+                   placeholder="Ej: ¿Cuál es la RPM máxima? ¿Qué temperatura alcanza el motor?" 
+                   required>
+            
+            <label>
+                <input type="checkbox" name="usar_codigo" id="usar_codigo" checked>
+                ¿Generar y ejecutar código para análisis detallado?
+            </label>
+            
+            <input type="hidden" name="locomotora" value="{{ locomotora_seleccionada }}">
+            <button type="submit" name="action" value="consultar_ia">🤖 Consultar IA</button>
+            <div class="loading" id="consultaLoading">⏳ Procesando consulta...</div>
+        </form>
+        {% elif locomotora_seleccionada %}
+        <div class="status info">
+            ℹ️ Primero debes cargar los datos CSV para poder hacer consultas a la IA.
+        </div>
+        {% endif %}
+
+        <!-- Resultados -->
+        {% if respuesta %}
+        <h2>📊 Respuesta de la IA</h2>
+        <pre>{{ respuesta }}</pre>
+        {% endif %}
+
+        {% if resultado_ml %}
+        <h2>🔬 Análisis de Machine Learning</h2>
+        <pre>{{ resultado_ml }}</pre>
+        {% endif %}
+
+        {% if error %}
+        <div class="status error">
+            ❌ Error: {{ error }}
+        </div>
+        {% endif %}
+
+        <!-- Gráfico -->
+        {% if chart_data %}
+        <h2>📈 Visualización de Datos</h2>
+        <canvas id="myChart"></canvas>
+        <script>
+            const ctx = document.getElementById('myChart').getContext('2d');
+            try {
+                const chartData = JSON.parse('{{ chart_data | tojson | safe }}');
+                new Chart(ctx, chartData);
+            } catch (e) {
+                console.error('Error al cargar el gráfico:', e);
+                document.getElementById('myChart').style.display = 'none';
+            }
+        </script>
+        {% endif %}
+    </div>
+
+    <script>
+        // Mostrar indicadores de carga
+        document.getElementById('uploadForm')?.addEventListener('submit', function() {
+            document.getElementById('uploadLoading').style.display = 'block';
+        });
+        
+        document.getElementById('consultaForm')?.addEventListener('submit', function() {
+            document.getElementById('consultaLoading').style.display = 'block';
+        });
+
+        // Validar archivos
+        document.getElementById('file1')?.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && !file.name.endsWith('.csv')) {
+                alert('Por favor, selecciona un archivo CSV');
+                e.target.value = '';
+            }
+        });
+    </script>
+</body>
+</html>

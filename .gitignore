@@ -10,6 +10,7 @@ __pycache__/
 .env
 *.db
 
+uploads/
 
 # .gitignore
 echo "dist/main.exe" >> .gitignore

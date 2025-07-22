@@ -22,6 +22,7 @@ warnings.filterwarnings('ignore')
 
 # Configuración (usa variable de entorno en producción!)
 genai.configure(api_key='AIzaSyA2PipvauvVPmrGQz-Hn7nhu_VcWHypeEo')
+modelo = genai.GenerativeModel('gemini-1.5-flash')
 
 @dataclass
 class VariableInfo:
