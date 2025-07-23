@@ -21,7 +21,7 @@ bot = LocomotoraBot(modelo)
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    # Variables para el template
+    # Variables para el template - IMPORTANTE: actualizar desde session SIEMPRE
     context = {
         'locomotora_seleccionada': session.get('locomotora_seleccionada'),
         'archivos_cargados': session.get('archivos_cargados'),
@@ -42,10 +42,14 @@ def index():
                 locomotora = request.form.get('locomotora')
                 if locomotora in ['ALCO', 'GAIA', 'GR12', 'GT22']:
                     session['locomotora_seleccionada'] = locomotora
+                    # Limpiar datos anteriores cuando se cambia de locomotora
                     session.pop('archivos_cargados', None)
                     session.pop('datos_disponibles', None)
                     session.pop('archivo_principal', None)
                     session.pop('archivo_secundario', None)
+                    
+                    # CRÍTICO: Actualizar el contexto inmediatamente
+                    context['locomotora_seleccionada'] = locomotora
                     context['mensaje'] = f'Locomotora {locomotora} seleccionada correctamente'
                     context['tipo_mensaje'] = 'success'
                 else:
@@ -56,6 +60,9 @@ def index():
                 if not locomotora:
                     context['error'] = 'Primero debes seleccionar una locomotora'
                     return render_template('index.html', **context)
+                
+                # Mantener locomotora seleccionada en contexto
+                context['locomotora_seleccionada'] = locomotora
                 
                 file1 = request.files.get('file1')
                 file2 = request.files.get('file2')
@@ -101,16 +108,22 @@ def index():
                 if archivos_procesados:
                     session['archivos_cargados'] = ', '.join(archivos_procesados)
                     session['datos_disponibles'] = True
+                    # CRÍTICO: Actualizar contexto inmediatamente
                     context['archivos_cargados'] = session['archivos_cargados']
                     context['datos_disponibles'] = True
                     context['mensaje'] = f'Datos cargados exitosamente para {locomotora}'
                     context['tipo_mensaje'] = 'success'
-                    context['chart_data'] = generar_grafico(df)
+                    context['chart_data'] = generar_grafico_mejorado(df)
             
             elif action == 'consultar_ia':
                 locomotora = session.get('locomotora_seleccionada')
                 pregunta = request.form.get('pregunta')
                 usar_codigo = 'usar_codigo' in request.form
+                
+                # Mantener datos en contexto
+                context['locomotora_seleccionada'] = locomotora
+                context['archivos_cargados'] = session.get('archivos_cargados')
+                context['datos_disponibles'] = session.get('datos_disponibles', False)
                 
                 if not locomotora:
                     context['error'] = 'Primero debes seleccionar una locomotora'
@@ -130,10 +143,20 @@ def index():
                     respuesta = procesar_consulta_ia(locomotora, pregunta, usar_codigo, df)
                     context['respuesta'] = respuesta
                     context['resultado_ml'] = analizar_locomotora_ml(df, bot, "completo")
-                    context['chart_data'] = generar_grafico(df)
+                    context['chart_data'] = generar_grafico_mejorado(df)
         
         except Exception as e:
             context['error'] = f'Error interno: {str(e)}'
+            # Mantener datos existentes en caso de error
+            context['locomotora_seleccionada'] = session.get('locomotora_seleccionada')
+            context['archivos_cargados'] = session.get('archivos_cargados')
+            context['datos_disponibles'] = session.get('datos_disponibles', False)
+    
+    else:
+        # GET request - mostrar datos desde sesión
+        context['locomotora_seleccionada'] = session.get('locomotora_seleccionada')
+        context['archivos_cargados'] = session.get('archivos_cargados')
+        context['datos_disponibles'] = session.get('datos_disponibles', False)
     
     return render_template('index.html', **context)
 
@@ -147,60 +170,170 @@ def procesar_consulta_ia(locomotora, pregunta, usar_codigo, df):
     except Exception as e:
         return f"Error al procesar consulta: {str(e)}"
 
-def generar_grafico(df):
-    """Genera la configuración de Chart.js para el gráfico"""
+def generar_grafico_mejorado(df):
+    """Genera la configuración mejorada de Chart.js para el gráfico"""
     try:
-        if df.empty or "TimeString" not in df.columns or "VarValue" not in df.columns:
+        if df.empty:
+            return None
+
+        # Verificar columnas necesarias
+        required_columns = ["TimeString", "VarValue"]
+        if not all(col in df.columns for col in required_columns):
+            print(f"Columnas faltantes. Disponibles: {df.columns.tolist()}")
             return None
 
         df = df.copy()
+        
+        # Convertir tiempo
         df["TimeString"] = pd.to_datetime(df["TimeString"], errors='coerce')
         df = df.dropna(subset=["TimeString", "VarValue"]).sort_values("TimeString")
         
-        colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
+        # Colores mejorados para mejor contraste
+        colors = [
+            '#667eea', '#f093fb', '#4facfe', '#43e97b',
+            '#fa709a', '#ffecd2', '#a8edea', '#d299c2',
+            '#89f7fe', '#66a6ff', '#f78ca0', '#96e6a1'
+        ]
+        
         datasets = []
         
+        # Procesar por variable si existe la columna VarName
         if "VarName" in df.columns:
-            for idx, (nombre, subdf) in enumerate(df.groupby("VarName")):
-                if len(subdf) > 10:
-                    datasets.append({
-                        "label": nombre,
-                        "data": subdf["VarValue"].tolist(),
+            variable_groups = df.groupby("VarName")
+            
+            for idx, (nombre_variable, subdf) in enumerate(variable_groups):
+                if len(subdf) > 5:  # Solo variables con suficientes datos
+                    # Preparar datos para el gráfico
+                    time_labels = subdf["TimeString"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
+                    values = subdf["VarValue"].tolist()
+                    
+                    # Crear dataset con nombre completo preservado
+                    dataset = {
+                        "label": nombre_variable[:50] + "..." if len(nombre_variable) > 50 else nombre_variable,
+                        "fullLabel": nombre_variable,  # Nombre completo para tooltips
+                        "data": values,
                         "borderColor": colors[idx % len(colors)],
-                        "backgroundColor": colors[idx % len(colors)] + "80",
-                        "fill": False
-                    })
+                        "backgroundColor": colors[idx % len(colors)] + "20",
+                        "fill": False,
+                        "tension": 0.1,
+                        "borderWidth": 2,
+                        "pointRadius": 2,
+                        "pointHoverRadius": 5,
+                        "pointBackgroundColor": colors[idx % len(colors)],
+                        "pointBorderColor": "#ffffff",
+                        "pointBorderWidth": 2
+                    }
+                    datasets.append(dataset)
         else:
-            if len(df) > 10:
-                datasets.append({
-                    "label": "VarValue",
-                    "data": df["VarValue"].tolist(),
+            # Si no hay VarName, usar todos los datos como una serie
+            if len(df) > 5:
+                time_labels = df["TimeString"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
+                values = df["VarValue"].tolist()
+                
+                dataset = {
+                    "label": "Valores de Variables",
+                    "fullLabel": "Valores de Variables de la Locomotora",
+                    "data": values,
                     "borderColor": colors[0],
-                    "backgroundColor": colors[0] + "80",
-                    "fill": False
-                })
+                    "backgroundColor": colors[0] + "20",
+                    "fill": False,
+                    "tension": 0.1,
+                    "borderWidth": 2,
+                    "pointRadius": 2,
+                    "pointHoverRadius": 5,
+                    "pointBackgroundColor": colors[0],
+                    "pointBorderColor": "#ffffff",
+                    "pointBorderWidth": 2
+                }
+                datasets.append(dataset)
         
         if not datasets:
             return None
 
+        # Generar etiquetas de tiempo únicas
+        all_times = df["TimeString"].drop_duplicates().sort_values()
+        time_labels = all_times.dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
+        
+        # Limitar etiquetas para mejor visualización
+        if len(time_labels) > 20:
+            step = len(time_labels) // 20
+            time_labels = time_labels[::step]
+
         chart_config = {
             "type": "line",
             "data": {
-                "labels": df["TimeString"].dt.strftime("%Y-%m-%d %H:%M:%S").drop_duplicates().tolist(),
+                "labels": time_labels,
                 "datasets": datasets
             },
             "options": {
-                "scales": {
-                    "x": {"title": {"display": True, "text": "Tiempo"}},
-                    "y": {"title": {"display": True, "text": "Valor"}}
+                "responsive": True,
+                "maintainAspectRatio": False,
+                "interaction": {
+                    "intersect": False,
+                    "mode": "index"
                 },
-                "plugins": {"legend": {"display": True}},
-                "responsive": True
+                "plugins": {
+                    "title": {
+                        "display": True,
+                        "text": "Análisis Temporal de Variables",
+                        "font": {
+                            "size": 18,
+                            "weight": "bold"
+                        }
+                    },
+                    "legend": {
+                        "display": True,
+                        "position": "top",
+                        "labels": {
+                            "usePointStyle": True,
+                            "padding": 15,
+                            "font": {"size": 11}
+                        }
+                    },
+                    "tooltip": {
+                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
+                        "titleColor": "white",
+                        "bodyColor": "white",
+                        "borderColor": "rgba(102, 126, 234, 0.8)",
+                        "borderWidth": 1,
+                        "cornerRadius": 8,
+                        "displayColors": True
+                    }
+                },
+                "scales": {
+                    "x": {
+                        "title": {
+                            "display": True,
+                            "text": "Tiempo",
+                            "font": {"size": 14, "weight": "bold"}
+                        },
+                        "grid": {"color": "rgba(0, 0, 0, 0.1)"},
+                        "ticks": {
+                            "maxTicksLimit": 10,
+                            "font": {"size": 10}
+                        }
+                    },
+                    "y": {
+                        "title": {
+                            "display": True,
+                            "text": "Valor",
+                            "font": {"size": 14, "weight": "bold"}
+                        },
+                        "grid": {"color": "rgba(0, 0, 0, 0.1)"},
+                        "ticks": {"font": {"size": 10}}
+                    }
+                },
+                "elements": {
+                    "line": {"tension": 0.1, "borderWidth": 2},
+                    "point": {"radius": 2, "hoverRadius": 5}
+                }
             }
         }
+        
         return chart_config
+        
     except Exception as e:
-        print(f"Error al generar gráfico: {str(e)}")
+        print(f"Error al generar gráfico mejorado: {str(e)}")
         return None
 
 def corregir_respuesta(respuesta):
