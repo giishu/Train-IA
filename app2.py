@@ -113,7 +113,7 @@ def index():
                     context['datos_disponibles'] = True
                     context['mensaje'] = f'Datos cargados exitosamente para {locomotora}'
                     context['tipo_mensaje'] = 'success'
-                    context['chart_data'] = generar_grafico_mejorado(df)
+                    context['chart_data'] = generar_grafico(df)
             
             elif action == 'consultar_ia':
                 locomotora = session.get('locomotora_seleccionada')
@@ -143,7 +143,7 @@ def index():
                     respuesta = procesar_consulta_ia(locomotora, pregunta, usar_codigo, df)
                     context['respuesta'] = respuesta
                     context['resultado_ml'] = analizar_locomotora_ml(df, bot, "completo")
-                    context['chart_data'] = generar_grafico_mejorado(df)
+                    context['chart_data'] = generar_grafico(df)
         
         except Exception as e:
             context['error'] = f'Error interno: {str(e)}'
@@ -170,170 +170,60 @@ def procesar_consulta_ia(locomotora, pregunta, usar_codigo, df):
     except Exception as e:
         return f"Error al procesar consulta: {str(e)}"
 
-def generar_grafico_mejorado(df):
-    """Genera la configuración mejorada de Chart.js para el gráfico"""
+def generar_grafico(df):
+    """Genera la configuración de Chart.js para el gráfico"""
     try:
-        if df.empty:
-            return None
-
-        # Verificar columnas necesarias
-        required_columns = ["TimeString", "VarValue"]
-        if not all(col in df.columns for col in required_columns):
-            print(f"Columnas faltantes. Disponibles: {df.columns.tolist()}")
+        if df.empty or "TimeString" not in df.columns or "VarValue" not in df.columns:
             return None
 
         df = df.copy()
-        
-        # Convertir tiempo
         df["TimeString"] = pd.to_datetime(df["TimeString"], errors='coerce')
         df = df.dropna(subset=["TimeString", "VarValue"]).sort_values("TimeString")
         
-        # Colores mejorados para mejor contraste
-        colors = [
-            '#667eea', '#f093fb', '#4facfe', '#43e97b',
-            '#fa709a', '#ffecd2', '#a8edea', '#d299c2',
-            '#89f7fe', '#66a6ff', '#f78ca0', '#96e6a1'
-        ]
-        
+        colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
         datasets = []
         
-        # Procesar por variable si existe la columna VarName
         if "VarName" in df.columns:
-            variable_groups = df.groupby("VarName")
-            
-            for idx, (nombre_variable, subdf) in enumerate(variable_groups):
-                if len(subdf) > 5:  # Solo variables con suficientes datos
-                    # Preparar datos para el gráfico
-                    time_labels = subdf["TimeString"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
-                    values = subdf["VarValue"].tolist()
-                    
-                    # Crear dataset con nombre completo preservado
-                    dataset = {
-                        "label": nombre_variable[:50] + "..." if len(nombre_variable) > 50 else nombre_variable,
-                        "fullLabel": nombre_variable,  # Nombre completo para tooltips
-                        "data": values,
+            for idx, (nombre, subdf) in enumerate(df.groupby("VarName")):
+                if len(subdf) > 10:
+                    datasets.append({
+                        "label": nombre,
+                        "data": subdf["VarValue"].tolist(),
                         "borderColor": colors[idx % len(colors)],
-                        "backgroundColor": colors[idx % len(colors)] + "20",
-                        "fill": False,
-                        "tension": 0.1,
-                        "borderWidth": 2,
-                        "pointRadius": 2,
-                        "pointHoverRadius": 5,
-                        "pointBackgroundColor": colors[idx % len(colors)],
-                        "pointBorderColor": "#ffffff",
-                        "pointBorderWidth": 2
-                    }
-                    datasets.append(dataset)
+                        "backgroundColor": colors[idx % len(colors)] + "80",
+                        "fill": False
+                    })
         else:
-            # Si no hay VarName, usar todos los datos como una serie
-            if len(df) > 5:
-                time_labels = df["TimeString"].dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
-                values = df["VarValue"].tolist()
-                
-                dataset = {
-                    "label": "Valores de Variables",
-                    "fullLabel": "Valores de Variables de la Locomotora",
-                    "data": values,
+            if len(df) > 10:
+                datasets.append({
+                    "label": "VarValue",
+                    "data": df["VarValue"].tolist(),
                     "borderColor": colors[0],
-                    "backgroundColor": colors[0] + "20",
-                    "fill": False,
-                    "tension": 0.1,
-                    "borderWidth": 2,
-                    "pointRadius": 2,
-                    "pointHoverRadius": 5,
-                    "pointBackgroundColor": colors[0],
-                    "pointBorderColor": "#ffffff",
-                    "pointBorderWidth": 2
-                }
-                datasets.append(dataset)
+                    "backgroundColor": colors[0] + "80",
+                    "fill": False
+                })
         
         if not datasets:
             return None
 
-        # Generar etiquetas de tiempo únicas
-        all_times = df["TimeString"].drop_duplicates().sort_values()
-        time_labels = all_times.dt.strftime("%Y-%m-%d %H:%M:%S").tolist()
-        
-        # Limitar etiquetas para mejor visualización
-        if len(time_labels) > 20:
-            step = len(time_labels) // 20
-            time_labels = time_labels[::step]
-
         chart_config = {
             "type": "line",
             "data": {
-                "labels": time_labels,
+                "labels": df["TimeString"].dt.strftime("%Y-%m-%d %H:%M:%S").drop_duplicates().tolist(),
                 "datasets": datasets
             },
             "options": {
-                "responsive": True,
-                "maintainAspectRatio": False,
-                "interaction": {
-                    "intersect": False,
-                    "mode": "index"
-                },
-                "plugins": {
-                    "title": {
-                        "display": True,
-                        "text": "Análisis Temporal de Variables",
-                        "font": {
-                            "size": 18,
-                            "weight": "bold"
-                        }
-                    },
-                    "legend": {
-                        "display": True,
-                        "position": "top",
-                        "labels": {
-                            "usePointStyle": True,
-                            "padding": 15,
-                            "font": {"size": 11}
-                        }
-                    },
-                    "tooltip": {
-                        "backgroundColor": "rgba(0, 0, 0, 0.8)",
-                        "titleColor": "white",
-                        "bodyColor": "white",
-                        "borderColor": "rgba(102, 126, 234, 0.8)",
-                        "borderWidth": 1,
-                        "cornerRadius": 8,
-                        "displayColors": True
-                    }
-                },
                 "scales": {
-                    "x": {
-                        "title": {
-                            "display": True,
-                            "text": "Tiempo",
-                            "font": {"size": 14, "weight": "bold"}
-                        },
-                        "grid": {"color": "rgba(0, 0, 0, 0.1)"},
-                        "ticks": {
-                            "maxTicksLimit": 10,
-                            "font": {"size": 10}
-                        }
-                    },
-                    "y": {
-                        "title": {
-                            "display": True,
-                            "text": "Valor",
-                            "font": {"size": 14, "weight": "bold"}
-                        },
-                        "grid": {"color": "rgba(0, 0, 0, 0.1)"},
-                        "ticks": {"font": {"size": 10}}
-                    }
+                    "x": {"title": {"display": True, "text": "Tiempo"}},
+                    "y": {"title": {"display": True, "text": "Valor"}}
                 },
-                "elements": {
-                    "line": {"tension": 0.1, "borderWidth": 2},
-                    "point": {"radius": 2, "hoverRadius": 5}
-                }
+                "plugins": {"legend": {"display": True}},
+                "responsive": True
             }
         }
-        
         return chart_config
-        
     except Exception as e:
-        print(f"Error al generar gráfico mejorado: {str(e)}")
+        print(f"Error al generar gráfico: {str(e)}")
         return None
 
 def corregir_respuesta(respuesta):
