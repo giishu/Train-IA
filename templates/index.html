@@ -1,5 +1,13 @@
 <!DOCTYPE html>
 <html lang="es">
+<style>
+.csv-table th:first-child, .csv-table td:first-child {
+    position: sticky !important;
+    left: 0 !important;
+    z-index: 999 !important;
+    background-color: #f8f9fa !important;
+}
+</style>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,7 +15,7 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
             background-color: #f5f5f5;
@@ -42,13 +50,17 @@
             font-weight: bold;
             color: #555;
         }
-        input[type="text"], input[type="file"], select {
+        input[type="text"], input[type="file"], input[type="date"], select, textarea {
             width: 100%;
             max-width: 400px;
             padding: 10px;
             border: 1px solid #ddd;
             border-radius: 4px;
             margin-bottom: 15px;
+        }
+        select[multiple] {
+            height: 120px;
+            max-width: 300px;
         }
         button {
             background-color: #007bff;
@@ -62,6 +74,18 @@
         }
         button:hover {
             background-color: #0056b3;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+        }
+        .btn-secondary:hover {
+            background-color: #545b62;
+        }
+        .btn-reset {
+            background-color: #dc3545;
+        }
+        .btn-reset:hover {
+            background-color: #c82333;
         }
         .status {
             padding: 15px;
@@ -83,6 +107,175 @@
             border: 1px solid #99d3ff;
             color: #004085;
         }
+        .csv-info-card {
+            background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .date-range-info {
+            font-family: monospace;
+            font-size: 14px;
+            background: rgba(255,255,255,0.1);
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .filter-panel {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        .filter-row {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: flex-end;
+            margin-bottom: 15px;
+        }
+        .filter-group {
+            flex: 1;
+            min-width: 150px;
+        }
+        .filter-group label {
+            margin-bottom: 5px;
+            font-size: 14px;
+        }
+        .filter-group input, .filter-group select {
+            width: 100%;
+            max-width: none;
+            margin-bottom: 0;
+        }
+        .csv-container {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            background-color: white;
+            margin: 20px 0;
+            position: relative;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .csv-header {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+            font-weight: bold;
+        }
+        .csv-table-container {
+            max-height: 400px;
+            overflow: auto;
+            position: relative;
+            border-radius: 0 0 8px 8px;
+            -webkit-overflow-scrolling: touch;
+            width: 100%;
+            min-width: 0;
+        }
+        .csv-table {
+            width: max-content;
+            border-collapse: collapse;
+            border-spacing: 0;
+            margin: 0;
+            font-size: 12px;
+            table-layout: auto;
+        }
+        .csv-table thead th {
+            position: sticky;
+            top: 0;
+            background-color: #e9ecef;
+            z-index: 20;
+            padding: 10px 15px;
+            border-bottom: 2px solid #adb5bd;
+            border-right: 1px solid #dee2e6;
+            text-align: left;
+            font-weight: bold;
+            white-space: nowrap;
+            min-width: 200px;
+            box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1);
+        }
+        .csv-table tbody td {
+            padding: 8px 15px;
+            border-bottom: 1px solid #dee2e6;
+            border-right: 1px solid #dee2e6;
+            white-space: nowrap;
+            min-width: 200px;
+        }
+        .csv-table thead th:first-child,
+        .csv-table tbody td:first-child {
+            position: sticky;
+            left: 0;
+            background-color: #f8f9fa !important;
+            z-index: 25;
+            min-width: 180px;
+            width: 180px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.15);
+            border-right: 2px solid #adb5bd !important;
+        }
+        .csv-table thead th:first-child {
+            z-index: 30;
+            background-color: #e9ecef !important;
+            font-weight: bold;
+        }
+        .csv-table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+        .csv-table tbody tr:hover td:first-child {
+            background-color: #e9ecef !important;
+        }
+        .csv-table tbody td:not(:first-child) {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+        }
+        .pagination-info {
+            padding: 10px 15px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+            font-size: 14px;
+            color: #6c757d;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .pagination-controls button {
+            background-color: #6c757d;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            margin: 0 2px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .pagination-controls button:hover:not(:disabled) {
+            background-color: #545b62;
+        }
+        .pagination-controls button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .csv-table-container::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .csv-table-container::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .csv-table-container::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        .csv-table-container::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .loading {
+            display: none;
+            color: #007bff;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+        }
         pre {
             background-color: #f8f9fa;
             padding: 15px;
@@ -91,17 +284,115 @@
             overflow-x: auto;
             white-space: pre-wrap;
         }
-        .loading {
-            display: none;
-            color: #007bff;
-            font-style: italic;
-        }
         #myChart {
             max-width: 800px;
             margin: 20px auto;
         }
+        #chart-canvas {
+            width: 100%;
+            height: 400px;
+        }
+
+        .chart-container {
+            margin: 20px 0;
+            position: relative;
+        }
+
+        .chart-wrapper {
+            overflow-x: auto;
+            max-height: 400px;
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: white;
+            display: block;
+        }
+
+        .chart-wrapper.fullscreen {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            max-height: none !important;
+            z-index: 9999 !important;
+            background: white !important;
+            padding: 20px !important;
+            box-sizing: border-box !important;
+            overflow: auto !important; /* Permitir scroll si es necesario */
+            border-radius: 0 !important;
+        }
+
+        .chart-wrapper.fullscreen canvas {
+            width: auto !important;
+            height: auto !important; /* Escala proporcional */
+            min-width: 0 !important;
+            max-width: none !important;
+        }
+
+        .fullscreen-close {
+            position: fixed;
+            top: 25px;
+            right: 25px;
+            z-index: 10000;
+            background-color: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 45px;
+            height: 45px;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .fullscreen-close:hover {
+            background-color: #c82333;
+            transform: scale(1.05);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+        }
+
+        .chart-wrapper.fullscreen .fullscreen-close {
+            display: flex;
+        }
+
+        body.fullscreen-active {
+            overflow: hidden;
+        }
+
+        #myChart {
+            margin: 0;
+        }
+
+        .chart-wrapper.fullscreen::-webkit-scrollbar {
+            width: 12px;
+            height: 12px;
+        }
+
+        .chart-wrapper.fullscreen::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 6px;
+        }
+
+        .chart-wrapper.fullscreen::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 6px;
+        }
+
+        .chart-wrapper.fullscreen::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .chart-wrapper.fullscreen::-webkit-scrollbar-corner {
+            background: #f1f1f1;
+        }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <div class="container">
@@ -114,8 +405,14 @@
         </div>
         {% endif %}
 
+        {% if error %}
+        <div class="status error">
+            ❌ Error: {{ error }}
+        </div>
+        {% endif %}
+
         <!-- Selección de locomotora -->
-        <h2>1️⃣ Seleccionar Tipo de Locomotora</h2>
+        <h2>⚙️ Seleccionar Tipo de Locomotora</h2>
         <form method="POST" action="{{ url_for('index') }}">
             <label for="locomotora">Tipo de Locomotora:</label>
             <select name="locomotora" id="locomotora" required>
@@ -136,7 +433,7 @@
 
         <!-- Carga de archivos -->
         {% if locomotora_seleccionada %}
-        <h2>2️⃣ Cargar Datos</h2>
+        <h2>📁 Cargar Datos</h2>
         <form method="POST" action="{{ url_for('index') }}" enctype="multipart/form-data" id="uploadForm">
             <label for="file1">Archivo CSV Principal:</label>
             <input type="file" name="file1" id="file1" accept=".csv" required>
@@ -156,82 +453,307 @@
         </div>
         {% endif %}
 
-        <!-- Consulta a la IA -->
-        {% if locomotora_seleccionada and (archivos_cargados or datos_disponibles) %}
-        <h2>3️⃣ Consulta a la IA</h2>
-        <form method="POST" action="{{ url_for('index') }}" id="consultaForm">
-            <label for="pregunta">Pregunta sobre la locomotora {{ locomotora_seleccionada }}:</label>
-            <input type="text" name="pregunta" id="pregunta" 
-                   placeholder="Ej: ¿Cuál es la RPM máxima? ¿Qué temperatura alcanza el motor?" 
-                   required>
-            
-            <label>
-                <input type="checkbox" name="usar_codigo" id="usar_codigo" checked>
-                ¿Generar y ejecutar código para análisis detallado?
-            </label>
-            
-            <input type="hidden" name="locomotora" value="{{ locomotora_seleccionada }}">
-            <button type="submit" name="action" value="consultar_ia">🤖 Consultar IA</button>
-            <div class="loading" id="consultaLoading">⏳ Procesando consulta...</div>
-        </form>
-        {% elif locomotora_seleccionada %}
+        {% if fecha_min and fecha_max %}
         <div class="status info">
-            ℹ️ Primero debes cargar los datos CSV para poder hacer consultas a la IA.
+            📅 Rango de fechas: {{ fecha_min }} → {{ fecha_max }}
         </div>
         {% endif %}
 
-        <!-- Resultados -->
-        {% if respuesta %}
-        <h2>📊 Respuesta de la IA</h2>
-        <pre>{{ respuesta }}</pre>
-        {% endif %}
+        <!-- Contenido dinámico solo si hay datos disponibles -->
+        {% if datos_disponibles %}
+            <!-- Tabla CSV -->
+            {% if tabla_csv %}
+            <h2>📋 Contenido del CSV</h2>
+            <div class="csv-container">
+                <div class="csv-table-container">
+                    {{ tabla_csv | safe }}
+                </div>
+                <div class="pagination-info">
+                    <span>Página {{ current_page }} de {{ total_pages }}</span>
+                    <div class="pagination-controls">
+                        <form method="POST" action="{{ url_for('index') }}" style="display: inline;">
+                            <input type="hidden" name="action" value="cambiar_pagina">
+                            <input type="hidden" name="page" value="{{ current_page - 1 }}">
+                            {% for dia in session.get('filtros', {}).get('dias', []) %}
+                            <input type="hidden" name="filtro_dias" value="{{ dia }}">
+                            {% endfor %}
+                            {% for hora in session.get('filtros', {}).get('horas', []) %}
+                            <input type="hidden" name="filtro_horas" value="{{ hora }}">
+                            {% endfor %}
+                            {% for var in session.get('filtros', {}).get('variables', []) %}
+                            <input type="hidden" name="filtro_variables" value="{{ var }}">
+                            {% endfor %}
+                            <button type="submit" {% if current_page <= 1 %}disabled{% endif %}>Anterior</button>
+                        </form>
+                        <form method="POST" action="{{ url_for('index') }}" style="display: inline;">
+                            <input type="hidden" name="action" value="cambiar_pagina">
+                            <input type="hidden" name="page" value="{{ current_page + 1 }}">
+                            {% for dia in session.get('filtros', {}).get('dias', []) %}
+                            <input type="hidden" name="filtro_dias" value="{{ dia }}">
+                            {% endfor %}
+                            {% for hora in session.get('filtros', {}).get('horas', []) %}
+                            <input type="hidden" name="filtro_horas" value="{{ hora }}">
+                            {% endfor %}
+                            {% for var in session.get('filtros', {}).get('variables', []) %}
+                            <input type="hidden" name="filtro_variables" value="{{ var }}">
+                            {% endfor %}
+                            <button type="submit" {% if current_page >= total_pages %}disabled{% endif %}>Siguiente</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
 
-        {% if resultado_ml %}
-        <h2>🔬 Análisis de Machine Learning</h2>
-        <pre>{{ resultado_ml }}</pre>
-        {% endif %}
+            <!-- Filtros -->
+            {% if dias_disponibles %}
+            <div class="filter-panel">
+                <h3>🔍 Filtrar Datos</h3>
+                <form method="POST" action="{{ url_for('index') }}">
+                    <div class="filter-row">
+                        <div class="filter-group">
+                            <label>Días (Ctrl+Click para múltiples):</label>
+                            <select name="filtro_dias" multiple>
+                                {% for dia in dias_disponibles %}
+                                <option value="{{ dia }}" {% if dia in session.get('filtros', {}).get('dias', []) %}selected{% endif %}>{{ dia }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label>Horas (Ctrl+Click para múltiples):</label>
+                            <select name="filtro_horas" multiple>
+                                {% for hora in horas_disponibles %}
+                                <option value="{{ hora }}" {% if hora in session.get('filtros', {}).get('horas', []) %}selected{% endif %}>{{ hora }}:00</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% if variables_disponibles %}
+                        <div class="filter-group">
+                            <label>Variables (Ctrl+Click para múltiples):</label>
+                            <select name="filtro_variables" multiple>
+                                <option value="">-- Todas --</option>
+                                {% for var in variables_disponibles %}
+                                <option value="{{ var }}" {% if var in session.get('filtros', {}).get('variables', []) %}selected{% endif %}>{{ var }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        {% endif %}
+                        <div class="filter-group">
+                            <label>&nbsp;</label>
+                            <button type="submit" name="action" value="filtrar_datos">🔍 Filtrar</button>
+                            <button type="submit" name="action" value="resetear_filtros" class="btn-reset">🗑️ Resetear Filtros</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
 
-        {% if error %}
-        <div class="status error">
-            ❌ Error: {{ error }}
-        </div>
-        {% endif %}
+            <!-- Preguntar a la IA -->
+            <h2>🤖 Preguntar a la IA</h2>
+            <form method="POST" action="{{ url_for('index') }}">
+                <label for="pregunta">Escribe tu pregunta:</label>
+                <input type="text" name="pregunta" id="pregunta" required>
+                <!-- Checkbox oculto y siempre activado -->
+                <input type="hidden" name="usar_codigo" value="true">
+                <button type="submit" name="action" value="consultar_ia">Preguntar</button>
+            </form>
 
-        <!-- Gráfico -->
-        {% if chart_data %}
-        <h2>📈 Visualización de Datos</h2>
-        <canvas id="myChart"></canvas>
-        <script>
-            const ctx = document.getElementById('myChart').getContext('2d');
+            {% if respuesta %}
+            <div class="status info">
+                <h3>Respuesta de la IA:</h3>
+                <pre>{{ respuesta }}</pre>
+            </div>
+            {% endif %}
+
+            <!-- Resultado ML oculto temporalmente -->
+            {% if resultado_ml %}
+            <!-- <div class="status info">
+                <h3>Resultado ML:</h3>
+                <pre>{{ resultado_ml }}</pre>
+            </div> -->
+            {% endif %}
+
+            <!-- Graficar Variables -->
+            {% if variables_disponibles %}
+            <h2>📈 Graficar Variables</h2>
+            <form method="POST" action="{{ url_for('index') }}">
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>Seleccionar Variables (máx. 3):</label>
+                        <select name="graficar_variables" multiple required>
+                            {% for var in variables_disponibles %}
+                            <option value="{{ var }}">{{ var }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Días (Ctrl+Click para múltiples):</label>
+                        <select name="graficar_dias" multiple>
+                            {% for dia in dias_disponibles %}
+                            <option value="{{ dia }}">{{ dia }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Horas (Ctrl+Click para múltiples):</label>
+                        <select name="graficar_horas" multiple>
+                            {% for hora in horas_disponibles %}
+                            <option value="{{ hora }}">{{ hora }}:00</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>&nbsp;</label>
+                        <button type="submit" name="action" value="graficar">📊 Generar Gráfico</button>
+                    </div>
+                </div>
+            </form>
+
+            {% if grafico and grafico is not none %}
+            <h2>Gráfico Generado</h2>
+            <div class="chart-container">
+                <button id="toggleFullscreen" style="margin-bottom: 10px;">📐 Pantalla Completa</button>
+                <div class="chart-wrapper" id="chartWrapper">
+                    <button class="fullscreen-close" id="closeFullscreen">✕</button>
+                    <canvas id="myChart"></canvas>
+                </div>
+            </div>
+            
+            <!-- Incluir Chart.js desde un CDN -->
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <script>
+            let graficoJson = '{{ grafico | tojson | safe }}';
+            let graficoData;
             try {
-                const chartData = JSON.parse('{{ chart_data | tojson | safe }}');
-                new Chart(ctx, chartData);
+                graficoData = JSON.parse(graficoJson);
+                if (typeof graficoData !== 'object' || graficoData === null) {
+                    throw new Error('Datos del gráfico no válidos');
+                }
             } catch (e) {
-                console.error('Error al cargar el gráfico:', e);
-                document.getElementById('myChart').style.display = 'none';
+                console.error('Error al parsear los datos del gráfico:', e);
+                graficoData = { type: 'line', data: { labels: [], datasets: [] }, options: { responsive: true, maintainAspectRatio: false } };
             }
-        </script>
+
+            const chartContainer = document.getElementById('chartWrapper');
+            const ctx = document.getElementById('myChart').getContext('2d');
+            const toggleBtn = document.getElementById('toggleFullscreen');
+            const closeBtn = document.getElementById('closeFullscreen');
+            let chart;
+            let isFullscreen = false;
+
+            function createChart(isFullscreen = false) {
+                if (chart) chart.destroy();
+
+                const canvas = document.getElementById('myChart');
+                const labelCount = graficoData.data.labels.length;
+                const minWidthPerLabel = isFullscreen ? 30 : 15;
+                const calculatedWidth = labelCount * minWidthPerLabel;
+                const aspectRatio = isFullscreen ? 1.5 : 2;
+
+                if (isFullscreen) {
+                    canvas.style.width = `${calculatedWidth}px`;
+                    canvas.style.height = `${calculatedWidth / aspectRatio}px`;
+                } else {
+                    canvas.style.width = '';
+                    canvas.style.height = '400px';
+                }
+
+                // Asegurar que los datasets tengan ejes Y asignados
+                graficoData.data.datasets.forEach((dataset, index) => {
+                    if (!dataset.yAxisID) {
+                        dataset.yAxisID = `y-axis-${index}`;
+                    }
+                });
+
+                chart = new Chart(ctx, {
+                    ...graficoData,
+                    options: {
+                        ...graficoData.options,
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        elements: {
+                            point: { radius: 2, hoverRadius: 4, borderWidth: 1 },
+                            line: { borderWidth: isFullscreen ? 1 : 1.5, tension: 0.1 }
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: 'Tiempo', font: { size: isFullscreen ? 14 : 12 } },
+                                ticks: { maxRotation: isFullscreen ? 30 : 0, autoSkip: true, maxTicksLimit: 20, font: { size: isFullscreen ? 11 : 10 } },
+                                grid: { display: isFullscreen, color: 'rgba(0,0,0,0.05)' }
+                            },
+                            ...graficoData.data.datasets.reduce((acc, dataset, index) => {
+                                acc[`y-axis-${index}`] = {
+                                    type: 'linear',
+                                    display: true,
+                                    position: index === 0 ? 'left' : 'right',
+                                    title: { display: true, text: dataset.label, font: { size: isFullscreen ? 14 : 12 } },
+                                    ticks: { font: { size: isFullscreen ? 11 : 10 } },
+                                    grid: { color: 'rgba(0,0,0,0.05)', drawOnChartArea: index === 0 } // Solo la primera escala dibuja la cuadrícula
+                                };
+                                return acc;
+                            }, {})
+                        },
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'top',
+                                labels: {
+                                    font: { size: isFullscreen ? 12 : 11 },
+                                    padding: 15,
+                                    generateLabels: function(chart) {
+                                        return chart.data.datasets.map((dataset, i) => ({
+                                            text: dataset.label,
+                                            fillStyle: dataset.backgroundColor,
+                                            strokeStyle: dataset.borderColor,
+                                            lineWidth: 1,
+                                            hidden: !chart.isDatasetVisible(i),
+                                            datasetIndex: i
+                                        }));
+                                    }
+                                },
+                                onClick: function(e, legendItem, legend) {
+                                    const index = legendItem.datasetIndex;
+                                    const ci = legend.chart;
+                                    if (ci.isDatasetVisible(index)) {
+                                        ci.hide(index);
+                                    } else {
+                                        ci.show(index);
+                                    }
+                                    ci.update();
+                                }
+                            },
+                            tooltip: { enabled: true, mode: 'index', intersect: false, titleFont: { size: 12 }, bodyFont: { size: 11 } }
+                        },
+                        interaction: { mode: 'nearest', axis: 'x', intersect: false }
+                    }
+                });
+            }
+
+            createChart(false);
+
+            toggleBtn.addEventListener('click', () => {
+                isFullscreen = true;
+                document.body.classList.add('fullscreen-active');
+                chartContainer.classList.add('fullscreen');
+                createChart(true);
+                toggleBtn.style.display = 'none';
+                setTimeout(() => chartContainer.scrollLeft = 0, 100);
+            });
+
+            function exitFullscreen() {
+                isFullscreen = false;
+                document.body.classList.remove('fullscreen-active');
+                chartContainer.classList.remove('fullscreen');
+                createChart(false);
+                toggleBtn.style.display = 'inline-block';
+            }
+
+            closeBtn.addEventListener('click', exitFullscreen);
+            document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isFullscreen) exitFullscreen(); });
+            window.addEventListener('resize', () => { if (chart && isFullscreen) createChart(true); });
+            </script>
+            {% endif %}
+            {% endif %}
         {% endif %}
     </div>
-
-    <script>
-        // Mostrar indicadores de carga
-        document.getElementById('uploadForm')?.addEventListener('submit', function() {
-            document.getElementById('uploadLoading').style.display = 'block';
-        });
-        
-        document.getElementById('consultaForm')?.addEventListener('submit', function() {
-            document.getElementById('consultaLoading').style.display = 'block';
-        });
-
-        // Validar archivos
-        document.getElementById('file1')?.addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            if (file && !file.name.endsWith('.csv')) {
-                alert('Por favor, selecciona un archivo CSV');
-                e.target.value = '';
-            }
-        });
-    </script>
 </body>
 </html>

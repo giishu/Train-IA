@@ -17,16 +17,26 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM Verificar si Flask está instalado
-python -c "import flask" >nul 2>&1
+REM Verificar conexión a internet (ping a un servidor conocido)
+ping -n 1 google.com >nul 2>&1
 if errorlevel 1 (
-    echo 📦 Instalando dependencias necesarias...
-    pip install flask pandas werkzeug
-    if errorlevel 1 (
-        echo Error al instalar dependencias
-        pause
-        exit /b 1
-    )
+    echo ERROR: No se detecto conexion a internet
+    echo.
+    echo Por favor conectate a internet para instalar dependencias
+    pause
+    exit /b 1
+)
+
+REM Verificar si las dependencias están instaladas usando requirements.txt
+echo 📦 Verificando e instalando dependencias necesarias...
+pip install -r requirements.txt >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: No se pudieron instalar las dependencias
+    echo.
+    echo Asegurese de tener permisos de administrador o intente ejecutar como administrador
+    echo Si el problema persiste, contacte al soporte
+    pause
+    exit /b 1
 )
 
 REM Cambiar al directorio del script
